@@ -5,11 +5,12 @@ CH1. Nhắc lịch theo phân khúc RFM có giảm tỉ lệ khách bỏ hẹn s
 hiện tại của cửa hàng không?
 CH2. Gửi ưu đãi theo phân khúc RFM có tăng tỉ lệ khách cũ quay lại trong 30
 ngày không?
-3.
+
+4.
 Chỉ số 1 – tỉ lệ bỏ hẹn (%) = số hẹn khách không đến ÷ tổng số hẹn.
 Chỉ số 2 – tỉ lệ khách cũ quay lại trong 30 ngày (%).
 
-4. Có sẵn từ đồ án cũ
+5. Có sẵn từ đồ án cũ
 Dashboard
 Quản lý cơ hội
 Quản lý khách hàng
@@ -18,7 +19,7 @@ Phân quyền
 Bảo mật cơ bản
 Gửi mail nhắc nhở
 Thông báo sinh nhật khách hàng
-5. Mới
+6. Mới
 Phân khúc FRM
 Báo cáo và phân tích nâng cao
 Thêm mới giao diện và kênh nhắc
