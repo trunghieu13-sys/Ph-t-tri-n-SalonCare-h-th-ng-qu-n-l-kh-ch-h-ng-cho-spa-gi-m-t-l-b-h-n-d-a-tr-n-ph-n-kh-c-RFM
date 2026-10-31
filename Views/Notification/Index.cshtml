@@ -1,0 +1,173 @@
+@model CRM_V2.ViewModels.NotificationViewModel
+
+@{
+    ViewData["Title"] = "Chăm sóc khách hàng - Gửi Email & SMS Automation";
+}
+
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Header Section -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-headset text-pink-400"></i>
+                Trung Tâm Chăm Sóc Khách Hàng (Email & SMS)
+            </h2>
+            <p class="text-xs text-slate-400">Gửi email marketing, xác nhận lịch hẹn và thông báo nhắc nhở tự động qua MailKit & Twilio.</p>
+        </div>
+        <a asp-controller="Home" asp-action="Index" class="inline-flex items-center space-x-2 text-xs text-purple-400 hover:text-purple-300">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Quay lại Tổng quan</span>
+        </a>
+    </div>
+
+    <!-- Feedback Alerts -->
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="glass-card p-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/40 text-emerald-300 text-xs flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-circle-check text-base text-emerald-400"></i>
+                <span>@TempData["SuccessMessage"]</span>
+            </div>
+            <button type="button" onclick="this.parentElement.remove()" class="text-emerald-400 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    }
+
+    @if (ViewBag.ErrorMessage != null)
+    {
+        <div class="glass-card p-4 rounded-2xl border border-rose-500/30 bg-rose-950/40 text-rose-300 text-xs flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-triangle-exclamation text-base text-rose-400"></i>
+                <span>@ViewBag.ErrorMessage</span>
+            </div>
+            <button type="button" onclick="this.parentElement.remove()" class="text-rose-400 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    }
+
+    <!-- Main Card Form -->
+    <div class="glass-card rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden">
+        <!-- Ambient Light -->
+        <div class="absolute -right-10 -top-10 w-72 h-72 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <form asp-action="Index" method="post" class="space-y-5 text-xs relative z-10">
+            @Html.AntiForgeryToken()
+
+            <div asp-validation-summary="ModelOnly" class="text-rose-400 font-medium"></div>
+
+            <!-- Select Channel -->
+            <div>
+                <label asp-for="Channel" class="block font-semibold text-slate-300 mb-2">Kênh gửi thông báo</label>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <label class="glass-card p-3 rounded-xl border border-white/10 flex items-center space-x-3 cursor-pointer hover:border-purple-500/40 transition">
+                        <input type="radio" asp-for="Channel" value="Email" id="radioEmail" class="accent-purple-500" checked />
+                        <div>
+                            <p class="font-bold text-white"><i class="fa-solid fa-envelope text-purple-400 mr-1"></i> Email</p>
+                            <p class="text-[10px] text-slate-400">MailKit SMTP Service</p>
+                        </div>
+                    </label>
+                    <label class="glass-card p-3 rounded-xl border border-white/10 flex items-center space-x-3 cursor-pointer hover:border-purple-500/40 transition">
+                        <input type="radio" asp-for="Channel" value="Sms" id="radioSms" class="accent-purple-500" />
+                        <div>
+                            <p class="font-bold text-white"><i class="fa-solid fa-comment-sms text-cyan-400 mr-1"></i> Tin nhắn SMS</p>
+                            <p class="text-[10px] text-slate-400">Twilio SMS Gateway</p>
+                        </div>
+                    </label>
+                    <label class="glass-card p-3 rounded-xl border border-white/10 flex items-center space-x-3 cursor-pointer hover:border-purple-500/40 transition">
+                        <input type="radio" asp-for="Channel" value="Both" id="radioBoth" class="accent-purple-500" />
+                        <div>
+                            <p class="font-bold text-white"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Cả hai kênh</p>
+                            <p class="text-[10px] text-slate-400">Email + SMS cùng lúc</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Email Input Field -->
+            <div id="emailGroup">
+                <label asp-for="Email" class="block font-semibold text-slate-300 mb-1">Địa chỉ Email nhận</label>
+                <div class="relative">
+                    <i class="fa-solid fa-at absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                    <input asp-for="Email" placeholder="khachhang@example.com" class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-white" />
+                </div>
+                <span asp-validation-for="Email" class="text-rose-400 text-[11px] mt-1 block"></span>
+            </div>
+
+            <!-- Phone Input Field -->
+            <div id="phoneGroup">
+                <label asp-for="PhoneNumber" class="block font-semibold text-slate-300 mb-1">Số điện thoại nhận SMS</label>
+                <div class="relative">
+                    <i class="fa-solid fa-phone absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                    <input asp-for="PhoneNumber" placeholder="+84901234567 hoặc 0901234567" class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-white" />
+                </div>
+                <span class="text-[10px] text-slate-500 mt-1 block">Twilio yêu cầu định dạng chuẩn quốc tế E.164 (VD: +84901234567).</span>
+                <span asp-validation-for="PhoneNumber" class="text-rose-400 text-[11px] mt-1 block"></span>
+            </div>
+
+            <!-- Subject Input Field -->
+            <div id="subjectGroup">
+                <label asp-for="Subject" class="block font-semibold text-slate-300 mb-1">Tiêu đề thư Email</label>
+                <div class="relative">
+                    <i class="fa-solid fa-heading absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                    <input asp-for="Subject" placeholder="[SalonCare] Thông báo xác nhận lịch hẹn..." class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-white" />
+                </div>
+                <span asp-validation-for="Subject" class="text-rose-400 text-[11px] mt-1 block"></span>
+            </div>
+
+            <!-- Content Area Field -->
+            <div>
+                <label asp-for="Content" class="block font-semibold text-slate-300 mb-1">Nội dung thông điệp</label>
+                <textarea asp-for="Content" rows="6" placeholder="Nhập nội dung tin nhắn hoặc mã HTML email..." class="w-full glass-input rounded-xl p-3 text-white leading-relaxed"></textarea>
+                <span asp-validation-for="Content" class="text-rose-400 text-[11px] mt-1 block"></span>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="pt-4 flex justify-end">
+                <button type="submit" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center justify-center space-x-2 transition">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                    <span>Thực Hiện Gửi Ngay</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const radioEmail = document.getElementById('radioEmail');
+            const radioSms = document.getElementById('radioSms');
+            const radioBoth = document.getElementById('radioBoth');
+
+            const emailGroup = document.getElementById('emailGroup');
+            const phoneGroup = document.getElementById('phoneGroup');
+            const subjectGroup = document.getElementById('subjectGroup');
+
+            function updateVisibility() {
+                if (radioEmail.checked) {
+                    emailGroup.style.display = 'block';
+                    subjectGroup.style.display = 'block';
+                    phoneGroup.style.display = 'none';
+                } else if (radioSms.checked) {
+                    emailGroup.style.display = 'none';
+                    subjectGroup.style.display = 'none';
+                    phoneGroup.style.display = 'block';
+                } else {
+                    emailGroup.style.display = 'block';
+                    subjectGroup.style.display = 'block';
+                    phoneGroup.style.display = 'block';
+                }
+            }
+
+            radioEmail.addEventListener('change', updateVisibility);
+            radioSms.addEventListener('change', updateVisibility);
+            radioBoth.addEventListener('change', updateVisibility);
+
+            updateVisibility();
+        });
+    </script>
+}

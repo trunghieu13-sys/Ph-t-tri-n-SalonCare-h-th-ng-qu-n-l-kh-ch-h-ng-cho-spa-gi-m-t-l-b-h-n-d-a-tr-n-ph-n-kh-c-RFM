@@ -1,0 +1,194 @@
+@model CRM_V2.ViewModels.RegisterViewModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Đăng Ký Tài Khoản - SalonCare CRM";
+}
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"]</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Plus Jakarta Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            dark: '#070A12',
+                            card: 'rgba(18, 24, 41, 0.7)',
+                            border: 'rgba(255, 255, 255, 0.08)',
+                            purple: '#7C3AED',
+                            pink: '#EC4899',
+                            blue: '#3B82F6',
+                            cyan: '#06B6D4',
+                            emerald: '#10B981'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #070A12;
+            color: #F3F4F6;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(124, 58, 237, 0.2) 0%, transparent 40%),
+                radial-gradient(circle at 85% 65%, rgba(6, 182, 212, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 50% 90%, rgba(236, 72, 153, 0.12) 0%, transparent 50%);
+            background-attachment: fixed;
+        }
+        .glass-card {
+            background: rgba(18, 24, 41, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-input {
+            background: rgba(11, 15, 25, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: all 0.2s ease;
+        }
+        .glass-input:focus {
+            border-color: #8B5CF6;
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+            outline: none;
+        }
+        .glow-effect {
+            filter: drop-shadow(0 0 25px rgba(168, 85, 247, 0.6));
+        }
+    </style>
+</head>
+<body class="font-sans antialiased min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-lg my-6">
+        <!-- Brand Logo Header -->
+        <div class="text-center mb-6">
+            <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-pink-500 shadow-xl shadow-purple-600/30 mb-3 glow-effect">
+                <i class="fa-solid fa-spa text-xl text-white"></i>
+            </div>
+            <h1 class="text-2xl font-extrabold text-white tracking-tight">SalonCare CRM</h1>
+            <p class="text-xs text-slate-400 mt-0.5">Khởi tạo tài khoản quản lý & vận hành Spa</p>
+        </div>
+
+        <!-- Register Card -->
+        <div class="glass-card rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+            <div class="mb-5">
+                <h2 class="text-xl font-bold text-white">Đăng Ký Tài Khoản</h2>
+                <p class="text-xs text-slate-400 mt-1">Vui lòng điền đầy đủ các thông tin cá nhân dưới đây.</p>
+            </div>
+
+            <form asp-action="Register" asp-controller="Account" method="post" class="space-y-4 text-xs">
+                @Html.AntiForgeryToken()
+
+                <!-- Validation Summary -->
+                <div asp-validation-summary="ModelOnly" class="p-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs space-y-1"></div>
+
+                <!-- Họ và tên -->
+                <div>
+                    <label class="block text-slate-300 font-semibold mb-1" asp-for="FullName">Họ và tên <span class="text-pink-400">*</span></label>
+                    <div class="relative">
+                        <i class="fa-solid fa-id-badge absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                        <input asp-for="FullName" type="text" placeholder="VD: Nguyễn Văn An" 
+                            class="w-full glass-input rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-slate-500" required />
+                    </div>
+                    <span asp-validation-for="FullName" class="text-[11px] text-rose-400 mt-0.5 block"></span>
+                </div>
+
+                <!-- Username & Phone (2 cột) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1" asp-for="Username">Tên đăng nhập <span class="text-pink-400">*</span></label>
+                        <div class="relative">
+                            <i class="fa-solid fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                            <input asp-for="Username" type="text" placeholder="nguyenvanan" 
+                                class="w-full glass-input rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-slate-500" required />
+                        </div>
+                        <span asp-validation-for="Username" class="text-[11px] text-rose-400 mt-0.5 block"></span>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1" asp-for="Phone">Số điện thoại</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-phone absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                            <input asp-for="Phone" type="tel" placeholder="0901234567" 
+                                class="w-full glass-input rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-slate-500" />
+                        </div>
+                        <span asp-validation-for="Phone" class="text-[11px] text-rose-400 mt-0.5 block"></span>
+                    </div>
+                </div>
+
+                <!-- Email & Vai trò -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1" asp-for="Email">Địa chỉ Email <span class="text-pink-400">*</span></label>
+                        <div class="relative">
+                            <i class="fa-solid fa-envelope absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                            <input asp-for="Email" type="email" placeholder="an.nguyen@example.com" 
+                                class="w-full glass-input rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-slate-500" required />
+                        </div>
+                        <span asp-validation-for="Email" class="text-[11px] text-rose-400 mt-0.5 block"></span>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1" asp-for="RoleName">Vai trò mong muốn</label>
+                        <select asp-for="RoleName" class="w-full glass-input rounded-xl px-3 py-2.5 text-white bg-slate-900 border-white/10">
+                            <option value="owner">Chủ Spa / Quản lý (Owner)</option>
+                            <option value="staff" selected>Nhân viên Spa (Staff)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Password & Confirm Password (2 cột) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1" asp-for="Password">Mật khẩu <span class="text-pink-400">*</span></label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                            <input asp-for="Password" type="password" id="regPassword" placeholder="Tối thiểu 6 ký tự" 
+                                class="w-full glass-input rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-slate-500" required />
+                        </div>
+                        <span asp-validation-for="Password" class="text-[11px] text-rose-400 mt-0.5 block"></span>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-300 font-semibold mb-1" asp-for="ConfirmPassword">Xác nhận mật khẩu <span class="text-pink-400">*</span></label>
+                        <div class="relative">
+                            <i class="fa-solid fa-shield-halved absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                            <input asp-for="ConfirmPassword" type="password" id="regConfirmPassword" placeholder="Nhập lại mật khẩu" 
+                                class="w-full glass-input rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-slate-500" required />
+                        </div>
+                        <span asp-validation-for="ConfirmPassword" class="text-[11px] text-rose-400 mt-0.5 block"></span>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" 
+                    class="w-full py-3 mt-3 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white font-bold text-sm shadow-lg shadow-purple-600/30 transition duration-200 flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>Tạo Tài Khoản</span>
+                </button>
+            </form>
+
+            <div class="mt-5 pt-4 border-t border-white/10 text-center">
+                <p class="text-xs text-slate-400">
+                    Đã có tài khoản SalonCare? 
+                    <a asp-action="Login" class="text-purple-400 hover:text-pink-400 font-bold ml-1 transition">Đăng nhập</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
