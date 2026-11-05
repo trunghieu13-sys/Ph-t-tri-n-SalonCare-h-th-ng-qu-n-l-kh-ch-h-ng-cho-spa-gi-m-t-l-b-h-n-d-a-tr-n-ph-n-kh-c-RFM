@@ -209,8 +209,8 @@ public class ReportsController : Controller
             {
                 while (await reader.ReadAsync())
                 {
-                    data.Trend.Labels.Add(reader.GetString(1)); // ShortDateLabel
-                    data.Trend.FullLabels.Add(reader.GetString(0)); // DateLabel
+                    data.Trend.Labels.Add(reader.IsDBNull(1) ? "" : reader.GetString(1)); // ShortDateLabel
+                    data.Trend.FullLabels.Add(reader.IsDBNull(0) ? "" : reader.GetString(0)); // DateLabel
                     data.Trend.Revenues.Add(reader.IsDBNull(2) ? 0m : reader.GetDecimal(2));
                     data.Trend.Visits.Add(reader.IsDBNull(3) ? 0 : reader.GetInt32(3));
                 }
@@ -229,10 +229,10 @@ public class ReportsController : Controller
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var sId = reader.GetInt32(0);
-                var sName = reader.GetString(1);
+                var sId = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                var sName = reader.IsDBNull(1) ? "Dịch vụ" : reader.GetString(1);
                 var catName = reader.IsDBNull(2) ? "Dịch vụ chung" : reader.GetString(2);
-                var count = reader.GetInt32(3);
+                var count = reader.IsDBNull(3) ? 0 : reader.GetInt32(3);
                 var rev = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4);
                 var pct = reader.IsDBNull(5) ? 0m : reader.GetDecimal(5);
 
@@ -260,15 +260,15 @@ public class ReportsController : Controller
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                data.Kpis.NewCustomers = reader.GetInt32(0);
-                data.Kpis.ReturningCustomers = reader.GetInt32(1);
-                data.Kpis.TotalActiveCustomers = reader.GetInt32(2);
+                data.Kpis.NewCustomers = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                data.Kpis.ReturningCustomers = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                data.Kpis.TotalActiveCustomers = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
                 data.Kpis.RetentionRatePercentage = reader.IsDBNull(3) ? 0m : reader.GetDecimal(3);
 
-                data.BookingStats.TotalBooked = reader.GetInt32(4);
-                data.BookingStats.CompletedCount = reader.GetInt32(5);
-                data.BookingStats.CancelledCount = reader.GetInt32(6);
-                data.BookingStats.NoShowCount = reader.GetInt32(7);
+                data.BookingStats.TotalBooked = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
+                data.BookingStats.CompletedCount = reader.IsDBNull(5) ? 0 : reader.GetInt32(5);
+                data.BookingStats.CancelledCount = reader.IsDBNull(6) ? 0 : reader.GetInt32(6);
+                data.BookingStats.NoShowCount = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
                 data.BookingStats.CancellationRatePercentage = reader.IsDBNull(8) ? 0m : reader.GetDecimal(8);
             }
 
@@ -278,8 +278,8 @@ public class ReportsController : Controller
                 {
                     data.CustomerTiers.Add(new CustomerTierItem
                     {
-                        TierName = reader.GetString(0),
-                        CustomerCount = reader.GetInt32(1),
+                        TierName = reader.IsDBNull(0) ? "Mới" : reader.GetString(0),
+                        CustomerCount = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
                         TotalSpent = reader.IsDBNull(2) ? 0m : reader.GetDecimal(2)
                     });
                 }
@@ -297,11 +297,11 @@ public class ReportsController : Controller
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var uId = reader.GetInt64(0);
-                var fName = reader.GetString(1);
+                var uId = reader.IsDBNull(0) ? 0L : reader.GetInt64(0);
+                var fName = reader.IsDBNull(1) ? "Nhân viên" : reader.GetString(1);
                 var avatar = reader.IsDBNull(2) ? "" : reader.GetString(2);
                 var rName = reader.IsDBNull(3) ? "KTV" : reader.GetString(3);
-                var sCount = reader.GetInt32(4);
+                var sCount = reader.IsDBNull(4) ? 0 : reader.GetInt32(4);
                 var sRev = reader.IsDBNull(5) ? 0m : reader.GetDecimal(5);
                 var rating = reader.IsDBNull(6) ? 5.0m : reader.GetDecimal(6);
 

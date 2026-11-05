@@ -327,6 +327,9 @@ public class AppointmentsController : Controller
                     completedAt = a.CompletedAt?.ToString("HH:mm dd/MM/yyyy"),
                     cancelledAt = a.CancelledAt?.ToString("HH:mm dd/MM/yyyy"),
                     cancellationReason = a.CancellationReason ?? "",
+                    totalDurationMinutes = a.AppointmentServices
+                        .Where(s => !s.IsHidden && s.Service != null)
+                        .Sum(s => s.Service!.DurationMinutes),
                     serviceIds = a.AppointmentServices.Where(s => !s.IsHidden).Select(s => s.ServiceId).ToList(),
                     services = a.AppointmentServices
                         .Where(s => !s.IsHidden)
@@ -334,6 +337,7 @@ public class AppointmentsController : Controller
                         {
                             id = s.ServiceId,
                             name = s.Service?.ServiceName ?? "Dịch vụ",
+                            duration = s.Service?.DurationMinutes ?? 60,
                             price = s.Price,
                             formattedPrice = s.Price.ToString("N0") + "đ"
                         }).ToList()
@@ -348,7 +352,54 @@ public class AppointmentsController : Controller
     }
 
     /// <summary>
+    /// API Kiểm tra KTV Rảnh động theo Ngày, Giờ bắt đầu và Tổng thời lượng dịch vụ
+    /// Route: GET /Appointments/GetAvailableEmployees?date={Date}&startTime={StartTime}&durationMinutes={Minutes}
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetAvailableEmployees(
+        DateTime? date = null,
+        string? startTime = "09:30",
+        int durationMinutes = 60,
+        string? endTime = null,
+        long? excludeAppointmentId = null)
+    {
+        try
+        {
+            var targetDate = date ?? DateTime.Today;
+            if (!TimeSpan.TryParse(startTime, out var parsedStart))
+            {
+                parsedStart = new TimeSpan(9, 30, 0);
+            }
+
+            TimeSpan? parsedEnd = null;
+            if (!string.IsNullOrWhiteSpace(endTime) && TimeSpan.TryParse(endTime, out var tmpEnd) && tmpEnd > parsedStart)
+            {
+                parsedEnd = tmpEnd;
+            }
+
+            var result = await _appointmentService.GetAvailableEmployeesAsync(
+                targetDate,
+                parsedStart,
+                durationMinutes,
+                excludeAppointmentId,
+                parsedEnd);
+
+            return Json(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi kiểm tra trạng thái KTV rảnh/bận");
+            return Json(new
+            {
+                success = false,
+                message = "Lỗi khi kiểm tra lịch làm việc của KTV: " + ex.Message
+            });
+        }
+    }
+
+    /// <summary>
     /// API Tạo Lịch hẹn mới (POST /Appointments/Create)
+    /// Tự động tính end_time = start_time + SUM(service.duration_minutes) và kiểm tra chống trùng lịch KTV (Serializable Transaction)
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AppointmentCreateViewModel model)
@@ -358,6 +409,7 @@ public class AppointmentsController : Controller
             return Json(new
             {
                 success = false,
+                code = "INVALID_INPUT",
                 message = "Vui lòng chọn khách hàng, ngày giờ và ít nhất 1 dịch vụ."
             });
         }
@@ -369,19 +421,42 @@ public class AppointmentsController : Controller
             if (long.TryParse(userIdStr, out var parsedId))
                 currentUserId = parsedId;
 
-            var appointment = await _appointmentService.CreateAppointmentAsync(model, currentUserId);
+            var result = await _appointmentService.CreateAppointmentSafeAsync(model, currentUserId);
+
+            if (!result.Success)
+            {
+                return Json(new
+                {
+                    success = false,
+                    code = result.Code,
+                    message = result.Message,
+                    calculatedStartTime = result.CalculatedStartTime,
+                    calculatedEndTime = result.CalculatedEndTime,
+                    totalDurationMinutes = result.TotalDurationMinutes,
+                    suggestedSlots = result.SuggestedSlots,
+                    availableEmployees = result.AvailableEmployees
+                });
+            }
 
             return Json(new
             {
                 success = true,
-                message = "Tạo lịch hẹn mới thành công!",
-                appointmentId = appointment.AppointmentId
+                code = "OK",
+                message = result.Message,
+                appointmentId = result.Appointment?.AppointmentId,
+                calculatedStartTime = result.CalculatedStartTime,
+                calculatedEndTime = result.CalculatedEndTime
             });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Lỗi khi tạo lịch hẹn mới");
-            return Json(new { success = false, message = "Lỗi khi lưu lịch hẹn: " + ex.Message });
+            return Json(new
+            {
+                success = false,
+                code = "ERROR",
+                message = "Lỗi khi lưu lịch hẹn: " + ex.Message
+            });
         }
     }
 
@@ -418,28 +493,32 @@ public class AppointmentsController : Controller
 
     /// <summary>
     /// API Đổi lịch / Cập nhật thông tin lịch hẹn (POST /Appointments/Reschedule)
+    /// Có kiểm tra chống trùng lịch KTV (EMPLOYEE_BUSY / ALL_BUSY)
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> Reschedule([FromBody] AppointmentRescheduleViewModel model)
     {
         if (!ModelState.IsValid)
         {
-            return Json(new { success = false, message = "Vui lòng kiểm tra lại ngày giờ hẹn." });
+            return Json(new { success = false, code = "INVALID_INPUT", message = "Vui lòng kiểm tra lại ngày giờ hẹn." });
         }
 
         try
         {
-            var result = await _appointmentService.RescheduleAsync(model);
+            var result = await _appointmentService.RescheduleSafeAsync(model);
             return Json(new
             {
                 success = result.Success,
-                message = result.Message
+                code = result.Code,
+                message = result.Message,
+                suggestedSlots = result.SuggestedSlots,
+                availableEmployees = result.AvailableEmployees
             });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Lỗi khi đổi lịch hẹn ID={Id}", model.AppointmentId);
-            return Json(new { success = false, message = "Lỗi máy chủ: " + ex.Message });
+            return Json(new { success = false, code = "ERROR", message = "Lỗi máy chủ: " + ex.Message });
         }
     }
 

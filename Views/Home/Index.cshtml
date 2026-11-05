@@ -1389,6 +1389,192 @@
     </div>
 </div>
 
+<!-- ======================================================================= -->
+<!-- VIEW 9: SYSTEM AUDIT LOGS (NHẬT KÝ HỆ THỐNG - CHỈ ADMIN & OWNER)       -->
+<!-- ======================================================================= -->
+@if (User.IsInRole("Owner") || User.IsInRole("Admin") || User.IsInRole("owner") || User.IsInRole("admin"))
+{
+<div id="auditLogsView" class="view-section space-y-6">
+    <!-- Top Header & Security Badge -->
+    <div class="glass-card rounded-2xl p-5 border border-amber-500/20 bg-gradient-to-r from-slate-900/90 via-purple-950/30 to-slate-900/90 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center space-x-4">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500/20 to-purple-600/30 border border-amber-500/40 flex items-center justify-center text-amber-400 text-xl shrink-0 shadow-lg shadow-amber-500/10">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <h2 class="text-lg font-bold text-white tracking-wide">Nhật ký hệ thống (System Audit Logs)</h2>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
+                        <i class="fa-solid fa-lock mr-1"></i> Chỉ Chủ Spa / Admin
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Lưu vết tự động theo thời gian thực mọi thao tác Thêm / Sửa / Xóa / Đăng nhập / Xuất báo cáo của nhân viên trên toàn bộ 8 phân hệ.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2.5 shrink-0">
+            <button type="button" onclick="resetAuditLogFilters()" class="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-rotate-left"></i> Đặt lại bộ lọc
+            </button>
+            <button type="button" onclick="exportAuditLogsCsv()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/25 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-csv"></i> Xuất CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- 4 KPI Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="glass-card rounded-2xl p-4 border border-white/10 flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">Tổng bản ghi nhật ký</p>
+                <h3 id="auditTotalCount" class="text-2xl font-bold text-white mt-1">0</h3>
+                <span class="text-[11px] text-purple-400">Toàn bộ thao tác khớp bộ lọc</span>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 text-lg">
+                <i class="fa-solid fa-clipboard-list"></i>
+            </div>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-emerald-500/20 flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">Thao tác Thêm mới (CREATE)</p>
+                <h3 id="auditCreateCount" class="text-2xl font-bold text-emerald-400 mt-1">0</h3>
+                <span class="text-[11px] text-emerald-400/80">Tạo khách, lịch hẹn, dịch vụ...</span>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg">
+                <i class="fa-solid fa-circle-plus"></i>
+            </div>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-amber-500/20 flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">Thao tác Cập nhật (UPDATE)</p>
+                <h3 id="auditUpdateCount" class="text-2xl font-bold text-amber-400 mt-1">0</h3>
+                <span class="text-[11px] text-amber-400/80">Đổi trạng thái, sửa hồ sơ...</span>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg">
+                <i class="fa-solid fa-pen-to-square"></i>
+            </div>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-rose-500/20 flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400">Thao tác Xóa / Hủy (DELETE)</p>
+                <h3 id="auditDeleteCount" class="text-2xl font-bold text-rose-400 mt-1">0</h3>
+                <span class="text-[11px] text-rose-400/80">Xóa bản ghi, hủy lịch hẹn...</span>
+            </div>
+            <div class="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 text-lg">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Bar (Lọc theo Nhân viên, Phân hệ, Hành động, Khoảng ngày, Từ khóa) -->
+    <div class="glass-card rounded-2xl p-4 border border-white/10">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+            <!-- Dropdown Lọc theo nhân viên -->
+            <div class="lg:col-span-1">
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">
+                    <i class="fa-solid fa-user-check text-purple-400 mr-1"></i> Lọc theo nhân viên
+                </label>
+                <select id="auditEmployeeFilter" onchange="fetchAuditLogs()" class="w-full glass-input rounded-xl px-3 py-2 text-xs text-white bg-slate-900/90 border border-white/10 focus:border-purple-500 focus:outline-none">
+                    <option value="">-- Tất cả nhân viên --</option>
+                </select>
+            </div>
+
+            <!-- Dropdown Phân hệ -->
+            <div>
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">
+                    <i class="fa-solid fa-layer-group text-indigo-400 mr-1"></i> Phân hệ (Module)
+                </label>
+                <select id="auditModuleFilter" onchange="fetchAuditLogs()" class="w-full glass-input rounded-xl px-3 py-2 text-xs text-white bg-slate-900/90 border border-white/10 focus:border-purple-500 focus:outline-none">
+                    <option value="ALL">Tất cả phân hệ</option>
+                    <option value="CUSTOMERS">Khách hàng (CUSTOMERS)</option>
+                    <option value="APPOINTMENTS">Lịch hẹn (APPOINTMENTS)</option>
+                    <option value="SERVICES">Dịch vụ (SERVICES)</option>
+                    <option value="STAFF">Nhân viên (STAFF)</option>
+                    <option value="CUSTOMER_CARE">Chăm sóc KH (CUSTOMER_CARE)</option>
+                    <option value="REPORTS">Báo cáo (REPORTS)</option>
+                    <option value="SETTINGS">Cài đặt (SETTINGS)</option>
+                    <option value="AUTH">Xác thực (AUTH)</option>
+                </select>
+            </div>
+
+            <!-- Dropdown Hành động -->
+            <div>
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">
+                    <i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Loại hành động
+                </label>
+                <select id="auditActionFilter" onchange="fetchAuditLogs()" class="w-full glass-input rounded-xl px-3 py-2 text-xs text-white bg-slate-900/90 border border-white/10 focus:border-purple-500 focus:outline-none">
+                    <option value="ALL">Tất cả hành động</option>
+                    <option value="CREATE">CREATE (Thêm mới)</option>
+                    <option value="UPDATE">UPDATE (Cập nhật)</option>
+                    <option value="DELETE">DELETE (Xóa / Hủy)</option>
+                    <option value="LOGIN">LOGIN (Đăng nhập)</option>
+                    <option value="EXPORT">EXPORT (Xuất dữ liệu)</option>
+                </select>
+            </div>
+
+            <!-- Từ ngày -->
+            <div>
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">
+                    <i class="fa-regular fa-calendar text-cyan-400 mr-1"></i> Từ ngày
+                </label>
+                <input type="date" id="auditFromDate" onchange="fetchAuditLogs()" class="w-full glass-input rounded-xl px-3 py-2 text-xs text-white bg-slate-900/90 border border-white/10 focus:border-purple-500 focus:outline-none">
+            </div>
+
+            <!-- Đến ngày -->
+            <div>
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">
+                    <i class="fa-regular fa-calendar-check text-cyan-400 mr-1"></i> Đến ngày
+                </label>
+                <input type="date" id="auditToDate" onchange="fetchAuditLogs()" class="w-full glass-input rounded-xl px-3 py-2 text-xs text-white bg-slate-900/90 border border-white/10 focus:border-purple-500 focus:outline-none">
+            </div>
+
+            <!-- Tìm kiếm từ khóa -->
+            <div>
+                <label class="block text-[11px] font-medium text-slate-400 mb-1">
+                    <i class="fa-solid fa-magnifying-glass text-pink-400 mr-1"></i> Tìm nội dung / Mã bản ghi
+                </label>
+                <input type="text" id="auditSearchInput" oninput="debounceFetchAuditLogs()" placeholder="VD: Nguyễn Văn A, #102..." class="w-full glass-input rounded-xl px-3 py-2 text-xs text-white border border-white/10 focus:border-purple-500 focus:outline-none">
+            </div>
+        </div>
+    </div>
+
+    <!-- Bảng Nhật ký chi tiết (Log Table / Timeline) -->
+    <div class="glass-card rounded-2xl border border-white/10 overflow-hidden">
+        <div class="p-4 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <h3 class="text-sm font-bold text-white">Danh sách Nhật ký Thao tác Hệ thống</h3>
+                <span id="auditActiveEmployeeBadge" class="hidden px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30"></span>
+            </div>
+            <button type="button" onclick="fetchAuditLogs()" class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                <i class="fa-solid fa-arrows-rotate"></i> Làm mới dữ liệu
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-white/10 text-[11px] uppercase tracking-wider text-slate-400 bg-white/[0.02]">
+                        <th class="p-3.5 font-semibold">Thời gian</th>
+                        <th class="p-3.5 font-semibold">Nhân viên thực hiện</th>
+                        <th class="p-3.5 font-semibold">Phân hệ</th>
+                        <th class="p-3.5 font-semibold">Hành động</th>
+                        <th class="p-3.5 font-semibold">Chi tiết thao tác</th>
+                        <th class="p-3.5 font-semibold text-right">Mã Đối tượng & IP</th>
+                    </tr>
+                </thead>
+                <tbody id="auditLogsTableBody" class="divide-y divide-white/5 text-xs">
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-400">
+                            <i class="fa-solid fa-circle-notch fa-spin text-purple-400 mr-2"></i> Đang tải nhật ký hệ thống...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+}
+
+
 @section Scripts {
     <script>
         // APP STATE (Appointments, Services, Staff)
@@ -1439,7 +1625,8 @@
                 customerCareView: 'Chăm sóc khách hàng & Marketing 🤖',
                 reportsView: 'Báo cáo Kinh doanh 📊',
                 staffView: 'Đội ngũ Nhân viên 👩‍⚕️',
-                settingsView: 'Cài đặt Hệ thống ⚙️'
+                settingsView: 'Cài đặt Hệ thống ⚙️',
+                auditLogsView: 'Nhật ký Hệ thống & Bảo mật 🛡️'
             };
             document.getElementById('currentViewTitle').innerText = titles[viewId] || 'SalonCare CRM';
 
@@ -1454,6 +1641,8 @@
                 loadReportsDashboard();
             } else if (viewId === 'staffView') {
                 fetchStaffList();
+            } else if (viewId === 'auditLogsView') {
+                fetchAuditLogs();
             }
 
             // Auto Close Sidebar Mobile
@@ -2160,6 +2349,8 @@
             }
         }
 
+        let latestBookingAvailability = null;
+
         function populateBookingModalOptions() {
             const custSelect = document.getElementById('appCustomerId');
             if (custSelect) {
@@ -2167,43 +2358,346 @@
                     apptMetadata.customers.map(c => `<option value="${c.id}">${c.name} - ${c.phone} (${c.tier})</option>`).join('');
             }
 
-            const empSelect = document.getElementById('appEmployeeId');
-            if (empSelect) {
-                empSelect.innerHTML = `<option value="">-- Chưa phân công (Tự động điều phối) --</option>` +
-                    apptMetadata.employees.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
-            }
-
             const srvContainer = document.getElementById('appServicesContainer');
             if (srvContainer) {
                 srvContainer.innerHTML = apptMetadata.services.map(s => `
                     <label class="flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-purple-600/15 border border-white/10 cursor-pointer transition">
                         <div class="flex items-center space-x-2.5">
-                            <input type="checkbox" name="appServiceCheckbox" value="${s.id}" data-price="${s.price}" 
-                                onchange="recalculateBookingTotal()" 
+                            <input type="checkbox" name="appServiceCheckbox" value="${s.id}" data-price="${s.price}" data-duration="${s.duration || 60}"
+                                onchange="onBookingTimeOrServiceChange()" 
                                 class="w-4 h-4 rounded accent-purple-600" />
                             <div>
                                 <span class="text-white font-semibold block">${s.name}</span>
-                                <span class="text-[10px] text-slate-400">${s.category || 'Spa'} • ${s.duration} phút</span>
+                                <span class="text-[10px] text-slate-400">${s.category || 'Spa'} • <strong class="text-purple-300">${s.duration || 60} phút</strong></span>
                             </div>
                         </div>
                         <span class="text-xs font-bold text-emerald-400">${s.formattedPrice}</span>
                     </label>
                 `).join('');
             }
-            recalculateBookingTotal();
+            onBookingTimeOrServiceChange();
+        }
+
+        function calculateExpectedEndTime(startTimeStr, durationMinutes) {
+            if (!startTimeStr || !startTimeStr.includes(':')) return '10:30';
+            const parts = startTimeStr.split(':');
+            const startH = parseInt(parts[0] || '9', 10);
+            const startM = parseInt(parts[1] || '0', 10);
+            const mins = durationMinutes > 0 ? durationMinutes : 60;
+
+            let totalMinutes = startH * 60 + startM + mins;
+            if (totalMinutes > 23 * 60 + 59) {
+                totalMinutes = 23 * 60 + 59;
+            }
+            const endH = Math.floor(totalMinutes / 60);
+            const endM = totalMinutes % 60;
+            return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+        }
+
+        function getSelectedBookingDurationMinutes() {
+            const checkboxes = document.querySelectorAll('input[name="appServiceCheckbox"]:checked');
+            let totalDuration = 0;
+            checkboxes.forEach(cb => {
+                totalDuration += parseInt(cb.getAttribute('data-duration') || '60', 10);
+            });
+            return totalDuration > 0 ? totalDuration : 60;
         }
 
         function recalculateBookingTotal() {
             const checkboxes = document.querySelectorAll('input[name="appServiceCheckbox"]:checked');
             let total = 0;
+            let totalDuration = 0;
             checkboxes.forEach(cb => {
                 total += parseFloat(cb.getAttribute('data-price') || '0');
+                totalDuration += parseInt(cb.getAttribute('data-duration') || '60', 10);
             });
+
+            const effectiveDuration = totalDuration > 0 ? totalDuration : 60;
+            const startTimeEl = document.getElementById('appStartTime');
+            const endTimeEl = document.getElementById('appEndTime');
+            const durationBadge = document.getElementById('appTotalDurationBadge');
+
+            if (startTimeEl && endTimeEl) {
+                endTimeEl.value = calculateExpectedEndTime(startTimeEl.value, effectiveDuration);
+            }
+            if (durationBadge) {
+                durationBadge.innerText = checkboxes.length > 0
+                    ? `+${totalDuration} phút (${checkboxes.length} DV)`
+                    : `+60 phút (Mặc định)`;
+            }
 
             const countEl = document.getElementById('appSelectedServiceCount');
             const totalEl = document.getElementById('appTotalPriceDisplay');
-            if (countEl) countEl.innerText = `Đã chọn ${checkboxes.length} dịch vụ`;
+            if (countEl) {
+                countEl.innerText = checkboxes.length > 0
+                    ? `Đã chọn ${checkboxes.length} dịch vụ • Tổng thời lượng: ${totalDuration} phút`
+                    : `Đã chọn 0 dịch vụ (Mặc định giữ chỗ 60 phút)`;
+            }
             if (totalEl) totalEl.innerText = total.toLocaleString('vi-VN') + 'đ';
+
+            return effectiveDuration;
+        }
+
+        async function onBookingTimeOrServiceChange() {
+            const durationMinutes = recalculateBookingTotal();
+            await refreshAvailableEmployeesForBooking(durationMinutes);
+        }
+
+        async function refreshAvailableEmployeesForBooking(durationMinutesOverride) {
+            const dateVal = document.getElementById('appDate')?.value;
+            const startTimeVal = document.getElementById('appStartTime')?.value || '09:30';
+            const empSelect = document.getElementById('appEmployeeId');
+            const countBadge = document.getElementById('appAvailableCountBadge');
+            const hintEl = document.getElementById('appEmployeeAvailabilityHint');
+            const allBusyAlert = document.getElementById('bookingAllBusyAlert');
+            const allBusyText = document.getElementById('bookingAllBusyAlertText');
+            const slotsBox = document.getElementById('bookingSuggestedSlotsBox');
+            const slotsList = document.getElementById('bookingSuggestedSlotsList');
+            const submitBtn = document.getElementById('saveBookingBtn');
+
+            if (!dateVal || !empSelect) return;
+
+            const durationMinutes = durationMinutesOverride || getSelectedBookingDurationMinutes();
+            const previousSelectedEmpId = empSelect.value;
+
+            try {
+                const params = new URLSearchParams({
+                    date: dateVal,
+                    startTime: startTimeVal,
+                    durationMinutes: durationMinutes.toString()
+                });
+
+                const res = await fetch(`/Appointments/GetAvailableEmployees?${params.toString()}`);
+                const data = await res.json();
+                if (!data || !data.success) return;
+
+                latestBookingAvailability = data;
+
+                // Đồng bộ lại giờ kết thúc dự kiến từ Server
+                const endTimeEl = document.getElementById('appEndTime');
+                if (endTimeEl && data.endTime) {
+                    endTimeEl.value = data.endTime;
+                }
+
+                const employees = data.employees || [];
+                const availableCount = data.availableCount ?? 0;
+                const totalEmployees = data.totalEmployees ?? employees.length;
+                const allBusy = Boolean(data.all_busy || data.allBusy);
+
+                // Render Dropdown KTV với trạng thái 🟢 Sẵn sàng / 🔴 Đã có lịch (Disabled)
+                let optionsHtml = '';
+                if (allBusy) {
+                    optionsHtml += `<option value="" disabled selected>🔴 Tất cả KTV đều đang kín lịch (${data.startTime} - ${data.endTime})</option>`;
+                } else {
+                    optionsHtml += `<option value="">⚡ Tự động điều phối KTV đang rảnh (${availableCount}/${totalEmployees} sẵn sàng)</option>`;
+                }
+
+                employees.forEach(e => {
+                    const isAvail = Boolean(e.is_available ?? e.isAvailable);
+                    if (isAvail) {
+                        optionsHtml += `<option value="${e.id}" data-available="1" class="text-emerald-300 bg-slate-900">🟢 ${e.name} (Sẵn sàng • ${e.specialty || 'KTV'})</option>`;
+                    } else {
+                        const conflictRange = `${e.conflict_start_time || data.startTime} - ${e.conflict_end_time || data.endTime}`;
+                        optionsHtml += `<option value="${e.id}" disabled data-available="0" class="text-rose-400 bg-rose-950/60">🔴 ${e.name} (Đã có lịch ${conflictRange})</option>`;
+                    }
+                });
+
+                empSelect.innerHTML = optionsHtml;
+
+                // Kiểm tra xem KTV đang chọn trước đó có còn rảnh không
+                let previouslySelectedBecameBusy = false;
+                let busyEmpInfo = null;
+                if (previousSelectedEmpId) {
+                    const foundEmp = employees.find(x => String(x.id) === String(previousSelectedEmpId));
+                    if (foundEmp && (foundEmp.is_available || foundEmp.isAvailable)) {
+                        empSelect.value = previousSelectedEmpId;
+                    } else if (foundEmp) {
+                        previouslySelectedBecameBusy = true;
+                        busyEmpInfo = foundEmp;
+                        empSelect.value = '';
+                    }
+                }
+
+                // Cập nhật Badge & Hint trạng thái
+                if (allBusy) {
+                    if (countBadge) {
+                        countBadge.className = "text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold animate-pulse";
+                        countBadge.innerText = `🔴 0/${totalEmployees} KTV rảnh (Kín lịch)`;
+                    }
+                    empSelect.classList.add('border-rose-500/60');
+
+                    if (allBusyAlert && allBusyText) {
+                        allBusyText.innerText = "Tất cả KTV đều đang có lịch tại thời gian này, vui lòng chọn thời gian khác";
+                        allBusyAlert.classList.remove('hidden');
+                    }
+
+                    renderInlineSuggestedSlots(data.suggested_slots || data.suggestedSlots || [], slotsBox, slotsList, 'create');
+
+                    if (hintEl) {
+                        hintEl.innerHTML = `<i class="fa-solid fa-circle-xmark text-rose-400"></i><span class="text-rose-400 font-semibold">Không còn KTV nào trống trong khung giờ ${data.startTime} - ${data.endTime}.</span>`;
+                    }
+                } else {
+                    empSelect.classList.remove('border-rose-500/60');
+                    if (countBadge) {
+                        countBadge.className = "text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold";
+                        countBadge.innerText = `🟢 ${availableCount}/${totalEmployees} KTV sẵn sàng`;
+                    }
+
+                    if (previouslySelectedBecameBusy && busyEmpInfo) {
+                        if (allBusyAlert && allBusyText) {
+                            allBusyText.innerText = `KTV ${busyEmpInfo.name} đã có lịch hẹn từ ${busyEmpInfo.conflict_start_time} đến ${busyEmpInfo.conflict_end_time}. Hệ thống đã chuyển về chế độ chọn KTV khác đang rảnh!`;
+                            allBusyAlert.classList.remove('hidden');
+                        }
+                        renderInlineSuggestedSlots(data.suggested_slots || data.suggestedSlots || [], slotsBox, slotsList, 'create');
+                    } else {
+                        if (allBusyAlert) allBusyAlert.classList.add('hidden');
+                    }
+
+                    if (hintEl) {
+                        const busyCount = totalEmployees - availableCount;
+                        hintEl.innerHTML = busyCount > 0
+                            ? `<i class="fa-solid fa-shield-halved text-amber-400"></i><span class="text-amber-300">Đã tự động khóa ${busyCount} KTV đang bận trong khung giờ ${data.startTime} - ${data.endTime}.</span>`
+                            : `<i class="fa-solid fa-circle-check text-emerald-400"></i><span class="text-emerald-300">Tất cả ${totalEmployees} KTV đều đang rảnh trong khung giờ ${data.startTime} - ${data.endTime}.</span>`;
+                    }
+                }
+            } catch (err) {
+                console.error("Lỗi khi kiểm tra KTV rảnh động:", err);
+            }
+        }
+
+        function renderInlineSuggestedSlots(slots, containerBox, listEl, mode = 'create') {
+            if (!containerBox || !listEl) return;
+            if (!slots || slots.length === 0) {
+                containerBox.classList.add('hidden');
+                return;
+            }
+            containerBox.classList.remove('hidden');
+            listEl.innerHTML = slots.map(slot => {
+                const startPart = slot.split('-')[0].trim();
+                return `
+                    <button type="button" onclick="applySuggestedBookingSlot('${startPart}', '${mode}')"
+                        class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-200 hover:text-slate-950 border border-amber-400/40 text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                        <i class="fa-regular fa-clock"></i>
+                        <span>${slot}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function validateSelectedEmployeeInModal() {
+            const empSelect = document.getElementById('appEmployeeId');
+            if (!empSelect || !latestBookingAvailability) return true;
+
+            const selectedOpt = empSelect.options[empSelect.selectedIndex];
+            if (selectedOpt && selectedOpt.getAttribute('data-available') === '0') {
+                const empId = parseInt(empSelect.value, 10);
+                const empObj = (latestBookingAvailability.employees || []).find(e => e.id === empId);
+                showScheduleConflictModal({
+                    code: 'EMPLOYEE_BUSY',
+                    message: empObj
+                        ? `KTV ${empObj.name} đã có lịch hẹn từ ${empObj.conflict_start_time} đến ${empObj.conflict_end_time}. Vui lòng chọn KTV khác hoặc đổi khung giờ!`
+                        : 'KTV này đã có lịch hẹn trùng khung giờ!',
+                    suggestedSlots: latestBookingAvailability.suggested_slots || [],
+                    availableEmployees: latestBookingAvailability.employees || []
+                }, 'create');
+                empSelect.value = '';
+                return false;
+            }
+            return true;
+        }
+
+        function applySuggestedBookingSlot(newStartTime, mode = 'create') {
+            closeModal('scheduleConflictModal');
+            if (mode === 'reschedule') {
+                const reschedStartEl = document.getElementById('reschedStart');
+                if (reschedStartEl) {
+                    reschedStartEl.value = newStartTime;
+                    reschedStartEl.dispatchEvent(new Event('change'));
+                }
+                showToast(`Đã đổi sang khung giờ gợi ý ${newStartTime}!`, 'Đã chọn giờ trống');
+            } else {
+                const startEl = document.getElementById('appStartTime');
+                if (startEl) {
+                    startEl.value = newStartTime;
+                    onBookingTimeOrServiceChange();
+                }
+                const errBox = document.getElementById('bookingFormError');
+                if (errBox) errBox.classList.add('hidden');
+                showToast(`Đã chuyển giờ bắt đầu sang ${newStartTime}!`, 'Đã chọn giờ trống');
+            }
+        }
+
+        function selectSuggestedFreeEmployee(empId, empName, mode = 'create') {
+            closeModal('scheduleConflictModal');
+            if (mode === 'reschedule') {
+                const reschedEmp = document.getElementById('reschedEmp');
+                if (reschedEmp) reschedEmp.value = String(empId);
+            } else {
+                const empSelect = document.getElementById('appEmployeeId');
+                if (empSelect) empSelect.value = String(empId);
+                const errBox = document.getElementById('bookingFormError');
+                if (errBox) errBox.classList.add('hidden');
+            }
+            showToast(`Đã chọn KTV ${empName} đang sẵn sàng phục vụ!`, 'Đã đổi KTV');
+        }
+
+        function showScheduleConflictModal(result, mode = 'create') {
+            const badgeEl = document.getElementById('conflictModalBadge');
+            const titleEl = document.getElementById('conflictModalTitle');
+            const msgEl = document.getElementById('conflictModalMessage');
+            const freeEmpSec = document.getElementById('conflictFreeEmployeesSection');
+            const freeEmpList = document.getElementById('conflictFreeEmployeesList');
+            const slotsSec = document.getElementById('conflictSuggestedSlotsSection');
+            const slotsList = document.getElementById('conflictSuggestedSlotsList');
+
+            const isAllBusy = result.code === 'ALL_BUSY';
+
+            if (badgeEl) {
+                badgeEl.innerText = isAllBusy ? '🔴 Kín lịch toàn bộ KTV' : '⚠️ Xung đột lịch KTV';
+            }
+            if (titleEl) {
+                titleEl.innerText = isAllBusy
+                    ? 'Tất cả KTV đều đang bận ở khung giờ này!'
+                    : 'KTV được chọn đã có lịch hẹn trùng giờ!';
+            }
+            if (msgEl) {
+                msgEl.innerText = result.message || 'Tất cả KTV đều đang có lịch tại thời gian này, vui lòng chọn thời gian khác';
+            }
+
+            // Hiển thị các KTV đang rảnh cùng khung giờ (nếu chỉ bị trùng 1 KTV)
+            const availEmps = (result.availableEmployees || []).filter(e => e.is_available || e.isAvailable);
+            if (!isAllBusy && availEmps.length > 0 && freeEmpSec && freeEmpList) {
+                freeEmpSec.classList.remove('hidden');
+                freeEmpList.innerHTML = availEmps.map(e => `
+                    <button type="button" onclick="selectSuggestedFreeEmployee(${e.id}, '${(e.name || '').replace(/'/g, "\\'")}', '${mode}')"
+                        class="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-200 hover:text-slate-950 border border-emerald-500/40 text-xs font-bold transition flex items-center gap-1.5">
+                        <span>🟢 ${e.name}</span>
+                        <span class="text-[10px] opacity-80">(${e.specialty || 'Sẵn sàng'})</span>
+                    </button>
+                `).join('');
+            } else if (freeEmpSec) {
+                freeEmpSec.classList.add('hidden');
+            }
+
+            // Hiển thị các khung giờ trống gợi ý gần nhất trong ngày
+            const slots = result.suggestedSlots || result.suggested_slots || [];
+            if (slots.length > 0 && slotsSec && slotsList) {
+                slotsSec.classList.remove('hidden');
+                slotsList.innerHTML = slots.map(slot => {
+                    const startPart = slot.split('-')[0].trim();
+                    return `
+                        <button type="button" onclick="applySuggestedBookingSlot('${startPart}', '${mode}')"
+                            class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-200 hover:text-slate-950 border border-amber-400/40 text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-regular fa-clock"></i>
+                            <span>${slot}</span>
+                        </button>
+                    `;
+                }).join('');
+            } else if (slotsSec) {
+                slotsSec.classList.add('hidden');
+            }
+
+            openModal('scheduleConflictModal');
         }
 
         // 2. Tải và Render Bảng Kanban Lịch Hẹn từ CSDL
@@ -2448,6 +2942,7 @@
             const errBox = document.getElementById('bookingFormError');
             if (errBox) errBox.classList.add('hidden');
             openModal('bookingModal');
+            await onBookingTimeOrServiceChange();
         }
 
         async function handleCreateAppointment(e) {
@@ -2461,7 +2956,8 @@
             if (errBox) errBox.classList.add('hidden');
 
             const customerId = parseInt(document.getElementById('appCustomerId').value);
-            const empVal = document.getElementById('appEmployeeId').value;
+            const empSelect = document.getElementById('appEmployeeId');
+            const empVal = empSelect.value;
             const employeeId = empVal ? parseInt(empVal) : null;
             const appointmentDate = document.getElementById('appDate').value;
             const startTime = document.getElementById('appStartTime').value;
@@ -2483,6 +2979,37 @@
                 if (errMsg) errMsg.innerText = "Vui lòng chọn ít nhất 1 dịch vụ cho lịch hẹn.";
                 if (errBox) errBox.classList.remove('hidden');
                 return;
+            }
+
+            // Kiểm tra nhanh ở phía Client nếu tất cả KTV đã kín lịch
+            if (latestBookingAvailability && (latestBookingAvailability.all_busy || latestBookingAvailability.allBusy)) {
+                const allBusyMsg = "Tất cả KTV đều đang có lịch tại thời gian này, vui lòng chọn thời gian khác";
+                if (errMsg) errMsg.innerText = allBusyMsg;
+                if (errBox) errBox.classList.remove('hidden');
+                showScheduleConflictModal({
+                    code: 'ALL_BUSY',
+                    message: allBusyMsg,
+                    suggestedSlots: latestBookingAvailability.suggested_slots || latestBookingAvailability.suggestedSlots || [],
+                    availableEmployees: latestBookingAvailability.employees || []
+                }, 'create');
+                return;
+            }
+
+            // Kiểm tra nếu người dùng cố tình chọn KTV đang bận
+            if (employeeId && latestBookingAvailability && latestBookingAvailability.employees) {
+                const chosenEmp = latestBookingAvailability.employees.find(x => x.id === employeeId);
+                if (chosenEmp && !(chosenEmp.is_available ?? chosenEmp.isAvailable)) {
+                    const busyMsg = `KTV ${chosenEmp.name} đã có lịch hẹn từ ${chosenEmp.conflict_start_time} đến ${chosenEmp.conflict_end_time}. Vui lòng chọn KTV khác hoặc đổi khung giờ!`;
+                    if (errMsg) errMsg.innerText = busyMsg;
+                    if (errBox) errBox.classList.remove('hidden');
+                    showScheduleConflictModal({
+                        code: 'EMPLOYEE_BUSY',
+                        message: busyMsg,
+                        suggestedSlots: latestBookingAvailability.suggested_slots || latestBookingAvailability.suggestedSlots || [],
+                        availableEmployees: latestBookingAvailability.employees || []
+                    }, 'create');
+                    return;
+                }
             }
 
             spinner?.classList.remove('hidden');
@@ -2514,6 +3041,12 @@
                 } else {
                     if (errMsg) errMsg.innerText = result.message || "Không thể tạo lịch hẹn.";
                     if (errBox) errBox.classList.remove('hidden');
+
+                    // Nếu lỗi xung đột KTV (EMPLOYEE_BUSY hoặc ALL_BUSY) -> Mở Popup Cảnh báo kèm gợi ý giờ trống
+                    if (result.code === 'EMPLOYEE_BUSY' || result.code === 'ALL_BUSY') {
+                        showScheduleConflictModal(result, 'create');
+                        await onBookingTimeOrServiceChange();
+                    }
                 }
             } catch (err) {
                 console.error("Lỗi khi tạo lịch hẹn:", err);
@@ -2547,12 +3080,16 @@
                 }
 
                 const a = result.data;
+                const totalDur = a.totalDurationMinutes && a.totalDurationMinutes > 0 ? a.totalDurationMinutes : 60;
                 const empOptions = `<option value="">-- Chưa phân công --</option>` +
                     apptMetadata.employees.map(e => `<option value="${e.id}" ${a.employeeId === e.id ? 'selected' : ''}>${e.name}</option>`).join('');
 
                 const srvListHtml = (a.services || []).map(s => `
                     <div id="detailSrvRow_${a.id}_${s.id}" class="flex justify-between items-center py-2 border-b border-white/5 last:border-0 gap-2">
-                        <span class="text-white font-medium"><i class="fa-solid fa-spa text-purple-400 mr-1.5"></i>${s.name}</span>
+                        <div>
+                            <span class="text-white font-medium"><i class="fa-solid fa-spa text-purple-400 mr-1.5"></i>${s.name}</span>
+                            <span class="text-[10px] text-purple-300 ml-1">(${s.duration || 60} phút)</span>
+                        </div>
                         <div class="flex items-center gap-2.5">
                             <span class="text-emerald-400 font-bold">${s.formattedPrice}</span>
                             <button type="button" onclick="hideServiceFromDisplay(${a.id}, ${s.id})"
@@ -2578,7 +3115,10 @@
                     <!-- Danh sách dịch vụ & Tài chính -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
-                            <h4 class="text-[11px] font-bold text-pink-300 uppercase">Dịch vụ đăng ký</h4>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-[11px] font-bold text-pink-300 uppercase">Dịch vụ đăng ký</h4>
+                                <span class="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold">Tổng: ${totalDur} phút</span>
+                            </div>
                             <div>${srvListHtml}</div>
                             <div class="pt-2 border-t border-white/10 flex justify-between items-center">
                                 <span class="text-slate-400">Tổng chi phí:</span>
@@ -2602,26 +3142,37 @@
 
                     <!-- Form Đổi Lịch / Điều Phối Nhân Viên -->
                     <form onsubmit="handleRescheduleSubmit(event, ${a.id})" class="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/20 space-y-3.5">
-                        <h4 class="text-xs font-bold text-purple-300 uppercase flex items-center gap-1.5">
-                            <i class="fa-solid fa-clock-rotate-left"></i> Đổi lịch hẹn / Cập nhật điều phối
-                        </h4>
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold text-purple-300 uppercase flex items-center gap-1.5">
+                                <i class="fa-solid fa-clock-rotate-left"></i> Đổi lịch hẹn / Cập nhật điều phối
+                            </h4>
+                            <span id="reschedAvailableBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+                                Đang kiểm tra lịch KTV...
+                            </span>
+                        </div>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                                 <label class="block text-slate-400 mb-1">Ngày hẹn mới</label>
-                                <input type="date" id="reschedDate" value="${a.rawDate}" required class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900" />
+                                <input type="date" id="reschedDate" value="${a.rawDate}" required
+                                    onchange="onRescheduleTimeChange(${a.id}, ${totalDur})"
+                                    class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900" />
                             </div>
                             <div>
                                 <label class="block text-slate-400 mb-1">Giờ bắt đầu</label>
-                                <input type="time" id="reschedStart" value="${a.startTime}" required class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900" />
+                                <input type="time" id="reschedStart" value="${a.startTime}" required
+                                    onchange="onRescheduleTimeChange(${a.id}, ${totalDur})"
+                                    class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900" />
                             </div>
                             <div>
-                                <label class="block text-slate-400 mb-1">Giờ kết thúc</label>
-                                <input type="time" id="reschedEnd" value="${a.endTime}" required class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900" />
+                                <label class="block text-slate-400 mb-1">Giờ kết thúc (${totalDur}p)</label>
+                                <input type="time" id="reschedEnd" value="${a.endTime}" required
+                                    onchange="refreshAvailableEmployeesForReschedule(${a.id}, ${totalDur})"
+                                    class="w-full glass-input rounded-xl px-3 py-2 text-amber-300 font-bold bg-slate-900" />
                             </div>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-slate-400 mb-1">KTV phụ trách</label>
+                                <label class="block text-slate-400 mb-1">KTV phụ trách (🟢 Rảnh / 🔴 Đã có lịch)</label>
                                 <select id="reschedEmp" class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900">
                                     ${empOptions}
                                 </select>
@@ -2661,8 +3212,78 @@
                         </div>
                     </form>
                 `;
+
+                await refreshAvailableEmployeesForReschedule(a.id, totalDur, a.employeeId);
             } catch (err) {
                 content.innerHTML = `<p class="text-rose-400 text-center p-4">Lỗi kết nối khi tải chi tiết lịch hẹn.</p>`;
+            }
+        }
+
+        async function onRescheduleTimeChange(appointmentId, durationMinutes) {
+            const startEl = document.getElementById('reschedStart');
+            const endEl = document.getElementById('reschedEnd');
+            if (startEl && endEl) {
+                endEl.value = calculateExpectedEndTime(startEl.value, durationMinutes || 60);
+            }
+            await refreshAvailableEmployeesForReschedule(appointmentId, durationMinutes);
+        }
+
+        async function refreshAvailableEmployeesForReschedule(appointmentId, durationMinutes, initialEmpId) {
+            const dateVal = document.getElementById('reschedDate')?.value;
+            const startVal = document.getElementById('reschedStart')?.value;
+            const endVal = document.getElementById('reschedEnd')?.value;
+            const empSelect = document.getElementById('reschedEmp');
+            const badgeEl = document.getElementById('reschedAvailableBadge');
+
+            if (!dateVal || !startVal || !empSelect) return;
+
+            const currentEmpId = initialEmpId !== undefined ? initialEmpId : empSelect.value;
+
+            try {
+                const params = new URLSearchParams({
+                    date: dateVal,
+                    startTime: startVal,
+                    durationMinutes: (durationMinutes || 60).toString(),
+                    endTime: endVal || '',
+                    excludeAppointmentId: appointmentId.toString()
+                });
+
+                const res = await fetch(`/Appointments/GetAvailableEmployees?${params.toString()}`);
+                const data = await res.json();
+                if (!data || !data.success) return;
+
+                const employees = data.employees || [];
+                const availableCount = data.availableCount ?? 0;
+                const totalEmployees = data.totalEmployees ?? employees.length;
+                const allBusy = Boolean(data.all_busy || data.allBusy);
+
+                let html = allBusy
+                    ? `<option value="" disabled>🔴 Tất cả KTV đều kín lịch (${data.startTime} - ${data.endTime})</option>`
+                    : `<option value="">-- Chưa phân công (${availableCount}/${totalEmployees} KTV rảnh) --</option>`;
+
+                employees.forEach(e => {
+                    const isAvail = Boolean(e.is_available ?? e.isAvailable);
+                    const isSelected = currentEmpId && String(e.id) === String(currentEmpId) && isAvail;
+                    if (isAvail) {
+                        html += `<option value="${e.id}" ${isSelected ? 'selected' : ''} data-available="1">🟢 ${e.name} (Sẵn sàng)</option>`;
+                    } else {
+                        html += `<option value="${e.id}" disabled data-available="0">🔴 ${e.name} (Đã có lịch ${e.conflict_start_time} - ${e.conflict_end_time})</option>`;
+                    }
+                });
+
+                empSelect.innerHTML = html;
+
+                if (badgeEl) {
+                    if (allBusy) {
+                        badgeEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold";
+                        badgeEl.innerText = `🔴 Kín lịch (0/${totalEmployees} KTV rảnh)`;
+                    } else {
+                        badgeEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold";
+                        badgeEl.innerText = `🟢 ${availableCount}/${totalEmployees} KTV rảnh (${data.startTime} - ${data.endTime})`;
+                    }
+                }
+            } catch (err) {
+                console.error("Lỗi khi kiểm tra KTV rảnh khi đổi lịch:", err);
             }
         }
 
@@ -2742,7 +3363,11 @@
                     showToast(result.message, 'Đã cập nhật');
                     loadAppointmentsKanban();
                 } else {
-                    showToast(result.message || 'Lỗi khi đổi lịch', 'Lỗi');
+                    if (result.code === 'EMPLOYEE_BUSY' || result.code === 'ALL_BUSY') {
+                        showScheduleConflictModal(result, 'reschedule');
+                    } else {
+                        showToast(result.message || 'Lỗi khi đổi lịch', 'Lỗi');
+                    }
                 }
             } catch (err) {
                 showToast('Lỗi kết nối máy chủ!', 'Lỗi');
@@ -5074,6 +5699,249 @@
 
         function exportReportsPdf() {
             window.print();
+        }
+
+        // =========================================================================
+        // MODULE 9: SYSTEM AUDIT LOGS (NHẬT KÝ HỆ THỐNG - CHỈ ADMIN & OWNER)
+        // =========================================================================
+        let auditSearchDebounce = null;
+        let auditEmployeesLoaded = false;
+
+        function debounceFetchAuditLogs() {
+            clearTimeout(auditSearchDebounce);
+            auditSearchDebounce = setTimeout(() => {
+                fetchAuditLogs();
+            }, 300);
+        }
+
+        async function fetchAuditLogs() {
+            const tbody = document.getElementById('auditLogsTableBody');
+            if (!tbody) return;
+
+            const employeeId = document.getElementById('auditEmployeeFilter')?.value || '';
+            const moduleName = document.getElementById('auditModuleFilter')?.value || 'ALL';
+            const actionType = document.getElementById('auditActionFilter')?.value || 'ALL';
+            const fromDate = document.getElementById('auditFromDate')?.value || '';
+            const toDate = document.getElementById('auditToDate')?.value || '';
+            const search = document.getElementById('auditSearchInput')?.value.trim() || '';
+
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="p-8 text-center text-slate-400">
+                        <i class="fa-solid fa-circle-notch fa-spin text-purple-400 mr-2"></i> Đang truy xuất nhật ký từ bảng audit_logs...
+                    </td>
+                </tr>
+            `;
+
+            try {
+                const params = new URLSearchParams();
+                if (employeeId) params.append('employeeId', employeeId);
+                if (moduleName && moduleName !== 'ALL') params.append('moduleName', moduleName);
+                if (actionType && actionType !== 'ALL') params.append('actionType', actionType);
+                if (fromDate) params.append('fromDate', fromDate);
+                if (toDate) params.append('toDate', toDate);
+                if (search) params.append('search', search);
+
+                const response = await fetch(`/AuditLog/GetLogs?${params.toString()}`);
+
+                if (response.status === 403 || response.status === 401) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="p-8 text-center text-rose-400 font-semibold">
+                                <i class="fa-solid fa-ban mr-2 text-lg"></i> 403 Forbidden - Chỉ tài khoản Chủ Spa (Owner) hoặc Quản trị viên (Admin) mới có quyền truy cập Nhật ký hệ thống!
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                const res = await response.json();
+                if (!res.success) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" class="p-8 text-center text-rose-400">
+                                <i class="fa-solid fa-triangle-exclamation mr-1.5"></i> ${res.message || 'Không thể tải dữ liệu nhật ký.'}
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                // Populate Employee Dropdown once or keep selection
+                const empSelect = document.getElementById('auditEmployeeFilter');
+                if (empSelect && res.employees && !auditEmployeesLoaded) {
+                    const currentVal = empSelect.value;
+                    empSelect.innerHTML = `<option value="">-- Tất cả nhân viên (${res.employees.length}) --</option>` +
+                        res.employees.map(e => {
+                            const roleLabel = (e.roleName || '').toLowerCase() === 'admin' ? 'Admin'
+                                : (e.roleName || '').toLowerCase() === 'owner' ? 'Chủ Spa' : 'Nhân viên';
+                            return `<option value="${e.userId}">${e.fullName} (${roleLabel}${e.specialty ? ' - ' + e.specialty : ''})</option>`;
+                        }).join('');
+                    empSelect.value = currentVal;
+                    auditEmployeesLoaded = true;
+                }
+
+                // Update Active Employee Filter Badge
+                const activeBadge = document.getElementById('auditActiveEmployeeBadge');
+                if (activeBadge && empSelect) {
+                    if (employeeId && empSelect.selectedIndex > 0) {
+                        activeBadge.innerText = `Đang xem riêng: ${empSelect.options[empSelect.selectedIndex].text}`;
+                        activeBadge.classList.remove('hidden');
+                    } else {
+                        activeBadge.classList.add('hidden');
+                    }
+                }
+
+                // Update 4 KPI Cards
+                if (res.summary) {
+                    const elTotal = document.getElementById('auditTotalCount');
+                    const elCreate = document.getElementById('auditCreateCount');
+                    const elUpdate = document.getElementById('auditUpdateCount');
+                    const elDelete = document.getElementById('auditDeleteCount');
+                    if (elTotal) elTotal.innerText = (res.summary.totalCount || 0).toLocaleString();
+                    if (elCreate) elCreate.innerText = (res.summary.createCount || 0).toLocaleString();
+                    if (elUpdate) elUpdate.innerText = (res.summary.updateCount || 0).toLocaleString();
+                    if (elDelete) elDelete.innerText = (res.summary.deleteCount || 0).toLocaleString();
+                }
+
+                renderAuditLogsTable(res.data || []);
+            } catch (err) {
+                console.error('Lỗi khi tải Nhật ký hệ thống:', err);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-rose-400">
+                            <i class="fa-solid fa-circle-exclamation mr-1.5"></i> Lỗi kết nối máy chủ khi tải Nhật ký thao tác.
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function renderAuditLogsTable(logs) {
+            const tbody = document.getElementById('auditLogsTableBody');
+            if (!tbody) return;
+
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="p-10 text-center text-slate-400">
+                            <i class="fa-solid fa-clipboard-check text-2xl text-slate-500 mb-2 block"></i>
+                            Không tìm thấy bản ghi nhật ký nào khớp với điều kiện lọc hiện tại.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            const moduleMeta = {
+                'CUSTOMERS': { label: 'Khách hàng', icon: 'fa-users', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
+                'APPOINTMENTS': { label: 'Lịch hẹn', icon: 'fa-calendar-check', cls: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' },
+                'SERVICES': { label: 'Dịch vụ', icon: 'fa-spa', cls: 'bg-pink-500/15 text-pink-300 border-pink-500/30' },
+                'STAFF': { label: 'Nhân viên', icon: 'fa-user-tie', cls: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' },
+                'CUSTOMER_CARE': { label: 'Chăm sóc KH', icon: 'fa-headset', cls: 'bg-teal-500/15 text-teal-300 border-teal-500/30' },
+                'REPORTS': { label: 'Báo cáo', icon: 'fa-chart-pie', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+                'SETTINGS': { label: 'Cài đặt', icon: 'fa-Sliders', cls: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
+                'AUTH': { label: 'Bảo mật / Đăng nhập', icon: 'fa-key', cls: 'bg-blue-500/15 text-blue-300 border-blue-500/30' }
+            };
+
+            const actionMeta = {
+                'CREATE': { label: 'CREATE • Thêm mới', icon: 'fa-circle-plus', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' },
+                'UPDATE': { label: 'UPDATE • Cập nhật', icon: 'fa-pen-to-square', cls: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+                'DELETE': { label: 'DELETE • Xóa / Hủy', icon: 'fa-trash-can', cls: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
+                'LOGIN': { label: 'LOGIN • Đăng nhập', icon: 'fa-right-to-bracket', cls: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
+                'EXPORT': { label: 'EXPORT • Xuất file', icon: 'fa-file-export', cls: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' }
+            };
+
+            tbody.innerHTML = logs.map(log => {
+                const mod = moduleMeta[log.moduleName] || { label: log.moduleName, icon: 'fa-cube', cls: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+                const act = actionMeta[log.actionType] || { label: log.actionType, icon: 'fa-bolt', cls: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+                const initial = (log.employeeName || 'N').trim().charAt(0).toUpperCase();
+
+                const roleLower = (log.employeeRole || '').toLowerCase();
+                const roleBadge = roleLower === 'admin'
+                    ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">ADMIN</span>'
+                    : roleLower === 'owner'
+                        ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">OWNER</span>'
+                        : '<span class="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-white/10 text-slate-300">STAFF</span>';
+
+                const avatarHtml = log.employeeAvatar
+                    ? `<img src="${log.employeeAvatar}" alt="${log.employeeName}" class="w-8 h-8 rounded-full object-cover border border-purple-500/40 shrink-0">`
+                    : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">${initial}</div>`;
+
+                return `
+                    <tr class="hover:bg-white/[0.04] transition">
+                        <td class="p-3.5 whitespace-nowrap">
+                            <div class="font-mono text-xs text-white font-medium">${log.createdAtFormatted}</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>${log.relativeTime}</div>
+                        </td>
+                        <td class="p-3.5">
+                            <div class="flex items-center space-x-2.5">
+                                ${avatarHtml}
+                                <div>
+                                    <div class="font-semibold text-white flex items-center gap-1.5">
+                                        <span>${log.employeeName}</span>
+                                        ${roleBadge}
+                                    </div>
+                                    <div class="text-[10px] text-slate-400">ID Nhân viên: #${log.userId}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="p-3.5 whitespace-nowrap">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${mod.cls}">
+                                <i class="fa-solid ${mod.icon}"></i> ${mod.label}
+                            </span>
+                        </td>
+                        <td class="p-3.5 whitespace-nowrap">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${act.cls}">
+                                <i class="fa-solid ${act.icon}"></i> ${act.label}
+                            </span>
+                        </td>
+                        <td class="p-3.5 text-slate-200 max-w-md leading-relaxed">
+                            ${log.description}
+                        </td>
+                        <td class="p-3.5 text-right whitespace-nowrap">
+                            ${log.entityId ? `<span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 font-mono text-[11px] text-purple-300">${log.entityId}</span>` : '<span class="text-slate-500">---</span>'}
+                            <div class="text-[10px] text-slate-400 font-mono mt-1"><i class="fa-solid fa-network-wired mr-1 text-slate-500"></i>${log.ipAddress || '127.0.0.1'}</div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function resetAuditLogFilters() {
+            const emp = document.getElementById('auditEmployeeFilter');
+            const mod = document.getElementById('auditModuleFilter');
+            const act = document.getElementById('auditActionFilter');
+            const from = document.getElementById('auditFromDate');
+            const to = document.getElementById('auditToDate');
+            const search = document.getElementById('auditSearchInput');
+
+            if (emp) emp.value = '';
+            if (mod) mod.value = 'ALL';
+            if (act) act.value = 'ALL';
+            if (from) from.value = '';
+            if (to) to.value = '';
+            if (search) search.value = '';
+
+            fetchAuditLogs();
+        }
+
+        function exportAuditLogsCsv() {
+            const employeeId = document.getElementById('auditEmployeeFilter')?.value || '';
+            const moduleName = document.getElementById('auditModuleFilter')?.value || 'ALL';
+            const actionType = document.getElementById('auditActionFilter')?.value || 'ALL';
+            const fromDate = document.getElementById('auditFromDate')?.value || '';
+            const toDate = document.getElementById('auditToDate')?.value || '';
+
+            const params = new URLSearchParams();
+            if (employeeId) params.append('employeeId', employeeId);
+            if (moduleName && moduleName !== 'ALL') params.append('moduleName', moduleName);
+            if (actionType && actionType !== 'ALL') params.append('actionType', actionType);
+            if (fromDate) params.append('fromDate', fromDate);
+            if (toDate) params.append('toDate', toDate);
+
+            showToast('Đang trích xuất Nhật ký hệ thống ra file CSV...', 'Xuất Nhật Ký');
+            window.location.href = `/AuditLog/ExportCsv?${params.toString()}`;
         }
     </script>
 

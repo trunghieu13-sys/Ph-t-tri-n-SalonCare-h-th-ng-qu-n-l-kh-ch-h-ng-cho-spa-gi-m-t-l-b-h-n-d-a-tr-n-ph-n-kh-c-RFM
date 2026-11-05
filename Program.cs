@@ -18,6 +18,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // ==========================================
 // 2. CẤU HÌNH AUTHENTICATION & COOKIE SESSION
 // ==========================================
+builder.Services.AddHttpContextAccessor();
+
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -28,6 +30,19 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.HttpOnly = true;
         options.ExpireTimeSpan = TimeSpan.FromDays(7);
         options.SlidingExpiration = true;
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/AuditLog") ||
+                context.Request.Headers["X-Requested-With"] == "XMLHttpRequest" ||
+                context.Request.Headers.Accept.ToString().Contains("application/json"))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json; charset=utf-8";
+                return context.Response.WriteAsync("{\"success\":false,\"code\":\"FORBIDDEN\",\"message\":\"403 Forbidden: Chỉ tài khoản Chủ Spa (Owner) hoặc Quản trị viên (Admin) mới được phép truy cập Nhật ký hệ thống!\"}");
+            }
+            context.Response.Redirect(context.RedirectUri);
+            return Task.CompletedTask;
+        };
     });
 
 builder.Services.AddAuthorization();
@@ -58,6 +73,9 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // Dashboard Analytics & Summary Service
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// System Audit Logging Service (Nhật ký hệ thống & Bảo mật)
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 
 // Background Worker Service quét kịch bản tự động (5 phút/lần)
 builder.Services.AddHostedService<AutomationBackgroundService>();

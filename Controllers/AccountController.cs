@@ -99,7 +99,13 @@ public class AccountController : Controller
             await _context.SaveChangesAsync();
 
             // 5. Thiết lập Claims & Phiên đăng nhập Cookie Authentication
-            var roleName = user.Role?.RoleName ?? "staff";
+            var roleName = (user.Role?.RoleName ?? "staff").Trim().ToLowerInvariant();
+            var normalizedRole = roleName switch
+            {
+                "admin" => "Admin",
+                "owner" => "Owner",
+                _ => "Staff"
+            };
             var defaultAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150";
 
             var claims = new List<Claim>
@@ -107,6 +113,7 @@ public class AccountController : Controller
                 new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
                 new(ClaimTypes.Name, user.Username),
                 new(ClaimTypes.Email, user.Email),
+                new(ClaimTypes.Role, normalizedRole),
                 new(ClaimTypes.Role, roleName),
                 new("FullName", user.FullName),
                 new("AvatarUrl", string.IsNullOrWhiteSpace(user.AvatarUrl) ? defaultAvatar : user.AvatarUrl),
@@ -128,6 +135,29 @@ public class AccountController : Controller
                 CookieAuthenticationDefaults.AuthenticationScheme,
                 new ClaimsPrincipal(claimsIdentity),
                 authProperties);
+
+            // Ghi nhận thao tác LOGIN vào bảng audit_logs
+            try
+            {
+                var ipAddr = HttpContext.Connection?.RemoteIpAddress?.ToString();
+                if (string.IsNullOrWhiteSpace(ipAddr) || ipAddr == "::1") ipAddr = "127.0.0.1";
+
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    UserId = user.UserId,
+                    ModuleName = "AUTH",
+                    ActionType = "LOGIN",
+                    Description = $"Nhân viên {user.FullName} (@{user.Username} - {normalizedRole}) đăng nhập thành công vào hệ thống SalonCare CRM.",
+                    EntityId = user.UserId.ToString(),
+                    IpAddress = ipAddr,
+                    CreatedAt = DateTime.Now
+                });
+                await _context.SaveChangesAsync();
+            }
+            catch (Exception logEx)
+            {
+                _logger.LogWarning(logEx, "Không thể ghi AuditLog LOGIN cho user {Username}", user.Username);
+            }
 
             _logger.LogInformation("Người dùng {Username} ({FullName}) đã đăng nhập thành công vào hệ thống.", user.Username, user.FullName);
 
