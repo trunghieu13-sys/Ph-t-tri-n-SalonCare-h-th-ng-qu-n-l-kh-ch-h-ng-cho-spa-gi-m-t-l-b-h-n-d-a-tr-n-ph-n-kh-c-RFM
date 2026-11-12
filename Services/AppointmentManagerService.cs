@@ -12,11 +12,16 @@ public class AppointmentManagerService : IAppointmentService
     private static readonly string[] ActiveBlockingStatuses = { "Pending", "Confirmed", "InService" };
 
     private readonly ApplicationDbContext _context;
+    private readonly IRfmService _rfmService;
     private readonly ILogger<AppointmentManagerService> _logger;
 
-    public AppointmentManagerService(ApplicationDbContext context, ILogger<AppointmentManagerService> logger)
+    public AppointmentManagerService(
+        ApplicationDbContext context,
+        IRfmService rfmService,
+        ILogger<AppointmentManagerService> logger)
     {
         _context = context;
+        _rfmService = rfmService;
         _logger = logger;
     }
 
@@ -603,6 +608,13 @@ public class AppointmentManagerService : IAppointmentService
         }
 
         await _context.SaveChangesAsync();
+
+        // Event-Driven: Tự động tính lại điểm & giải thích phân khúc RFM ngay khi lịch hẹn chuyển sang Completed hoặc NoShow
+        if (newStatus == "Completed" || newStatus == "NoShow")
+        {
+            await _rfmService.RecalculateForCustomerAsync(appointment.CustomerId);
+        }
+
         return (true, "Đã cập nhật trạng thái lịch hẹn thành công!", appointment);
     }
 

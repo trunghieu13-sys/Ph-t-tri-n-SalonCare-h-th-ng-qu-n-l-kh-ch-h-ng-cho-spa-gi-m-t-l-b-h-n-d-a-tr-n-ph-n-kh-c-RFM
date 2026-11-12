@@ -17,6 +17,8 @@ public class CustomerCareController : Controller
     private readonly IWebHostEnvironment _env;
     private readonly IEmailService _emailService;
     private readonly ISmsService _smsService;
+    private readonly ZaloOaNotificationSender _zaloSender;
+    private readonly IAuditLogService _auditLogService;
     private readonly ILogger<CustomerCareController> _logger;
 
     public CustomerCareController(
@@ -26,6 +28,8 @@ public class CustomerCareController : Controller
         IWebHostEnvironment env,
         IEmailService emailService,
         ISmsService smsService,
+        ZaloOaNotificationSender zaloSender,
+        IAuditLogService auditLogService,
         ILogger<CustomerCareController> logger)
     {
         _context = context;
@@ -34,6 +38,8 @@ public class CustomerCareController : Controller
         _env = env;
         _emailService = emailService;
         _smsService = smsService;
+        _zaloSender = zaloSender;
+        _auditLogService = auditLogService;
         _logger = logger;
     }
 
@@ -115,6 +121,19 @@ public class CustomerCareController : Controller
 
         var (isEmailConfigured, isSmsConfigured, emailCfg, smsCfg) = GetGatewayState();
 
+        // Đọc cấu hình Zalo OA / ZNS từ bảng dbo.system_configs trong SQL Server
+        var zaloConfigs = await _context.SystemConfigs
+            .AsNoTracking()
+            .Where(c => c.ConfigKey.StartsWith("Zalo_") || c.ConfigKey == "Notification_PreferredChannel")
+            .ToDictionaryAsync(c => c.ConfigKey, c => c.ConfigValue ?? string.Empty);
+
+        string GetZaloCfg(string key, string fallback = "") =>
+            zaloConfigs.TryGetValue(key, out var val) && !string.IsNullOrWhiteSpace(val) ? val : fallback;
+
+        bool zaloUseSandboxMode = !string.Equals(GetZaloCfg("Zalo_UseSandboxMode", "true"), "false", StringComparison.OrdinalIgnoreCase);
+        string zaloAccessToken = GetZaloCfg("Zalo_AccessToken");
+        bool isZaloProductionConfigured = !zaloUseSandboxMode && !string.IsNullOrWhiteSpace(zaloAccessToken);
+
         return Json(new
         {
             success = true,
@@ -139,7 +158,19 @@ public class CustomerCareController : Controller
                 hasEmailPassword = isEmailConfigured,
                 accountSid = isSmsConfigured ? smsCfg.AccountSid : "",
                 fromPhoneNumber = isSmsConfigured ? smsCfg.FromPhoneNumber : "",
-                hasSmsAuthToken = isSmsConfigured
+                hasSmsAuthToken = isSmsConfigured,
+
+                // Zalo OA / ZNS Configs
+                zaloUseSandboxMode,
+                isZaloProductionConfigured,
+                hasZaloAccessToken = !string.IsNullOrWhiteSpace(zaloAccessToken),
+                zaloAppId = GetZaloCfg("Zalo_AppId", "4289102938471029384"),
+                zaloAppSecret = GetZaloCfg("Zalo_AppSecret"),
+                zaloAccessToken,
+                zaloRefreshToken = GetZaloCfg("Zalo_RefreshToken"),
+                zaloReminderTemplateId = GetZaloCfg("Zalo_ReminderTemplateId", "318920"),
+                zaloPromoTemplateId = GetZaloCfg("Zalo_PromoTemplateId", "318925"),
+                preferredChannel = GetZaloCfg("Notification_PreferredChannel", "SmartFallback")
             },
             interactions = recentInteractions
         });
@@ -147,7 +178,8 @@ public class CustomerCareController : Controller
 
     /// <summary>
     /// POST /CustomerCare/SaveGatewayConfig
-    /// Lưu trực tiếp cấu hình Gmail SMTP (MailKit) và Twilio SMS vào appsettings.json và nạp lại cấu hình tức thì
+    /// Lưu trực tiếp cấu hình Gmail SMTP (MailKit), Twilio SMS vào appsettings.json
+    /// và lưu cấu hình Zalo OA / ZNS vào bảng dbo.system_configs trong SQL Server.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> SaveGatewayConfig([FromBody] GatewayConfigDto dto)
@@ -205,26 +237,71 @@ public class CustomerCareController : Controller
                 configRoot.Reload();
             }
 
+            // Lưu cấu hình Zalo OA / ZNS vào bảng dbo.system_configs trong SQL Server
+            var zaloUpdates = new Dictionary<string, (string Value, string Desc)>
+            {
+                ["Zalo_UseSandboxMode"] = (string.IsNullOrWhiteSpace(dto.ZaloUseSandboxMode) ? "true" : dto.ZaloUseSandboxMode.Trim().ToLowerInvariant(), "Chế độ vận hành Zalo ZNS (true = Giả lập Sandbox, false = Gọi API Zalo ZNS thật)"),
+                ["Zalo_AppId"] = ((dto.ZaloAppId ?? "").Trim(), "Zalo Official Account App ID"),
+                ["Zalo_AppSecret"] = ((dto.ZaloAppSecret ?? "").Trim(), "Zalo Official Account App Secret"),
+                ["Zalo_AccessToken"] = ((dto.ZaloAccessToken ?? "").Trim(), "Zalo OA Access Token (hiệu lực 25 giờ)"),
+                ["Zalo_RefreshToken"] = ((dto.ZaloRefreshToken ?? "").Trim(), "Zalo OA Refresh Token (dùng để tự động lấy Access Token mới khi gặp mã lỗi -216)"),
+                ["Zalo_ReminderTemplateId"] = (string.IsNullOrWhiteSpace(dto.ZaloReminderTemplateId) ? "318920" : dto.ZaloReminderTemplateId.Trim(), "Mã mẫu tin ZNS (Template ID) nhắc lịch hẹn"),
+                ["Zalo_PromoTemplateId"] = (string.IsNullOrWhiteSpace(dto.ZaloPromoTemplateId) ? "318925" : dto.ZaloPromoTemplateId.Trim(), "Mã mẫu tin ZNS (Template ID) tặng voucher nhóm Nguy cơ rời bỏ"),
+                ["Notification_PreferredChannel"] = (string.IsNullOrWhiteSpace(dto.PreferredChannel) ? "SmartFallback" : dto.PreferredChannel.Trim(), "Chiến lược kênh gửi (SmartFallback / ZaloOA / SMS / Email)")
+            };
+
+            foreach (var kv in zaloUpdates)
+            {
+                var existing = await _context.SystemConfigs.FirstOrDefaultAsync(c => c.ConfigKey == kv.Key);
+                if (existing == null)
+                {
+                    _context.SystemConfigs.Add(new SystemConfig
+                    {
+                        ConfigKey = kv.Key,
+                        ConfigValue = kv.Value.Value,
+                        Description = kv.Value.Desc,
+                        UpdatedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    existing.ConfigValue = kv.Value.Value;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            await _auditLogService.LogActionAsync(
+                "SETTINGS",
+                "UPDATE",
+                "GatewayConfig",
+                $"Cập nhật cấu hình Cổng gửi Đa kênh (Gmail SMTP, Twilio SMS & Zalo OA ZNS: UseSandboxMode={zaloUpdates["Zalo_UseSandboxMode"].Value})"
+            );
+
             var (isEmailReady, isSmsReady, _, _) = GetGatewayState();
+            bool isZaloProd = zaloUpdates["Zalo_UseSandboxMode"].Value == "false" && !string.IsNullOrWhiteSpace(zaloUpdates["Zalo_AccessToken"].Value);
 
             return Json(new
             {
                 success = true,
                 isEmailConfigured = isEmailReady,
                 isSmsConfigured = isSmsReady,
-                message = "Đã lưu cấu hình Gmail SMTP & SMS Gateway thành công!"
+                isZaloProductionConfigured = isZaloProd,
+                zaloUseSandboxMode = zaloUpdates["Zalo_UseSandboxMode"].Value != "false",
+                message = "Đã lưu cấu hình Gmail SMTP, SMS Gateway & Zalo OA / ZNS thành công!"
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Lỗi khi lưu cấu hình cổng gửi Email/SMS.");
+            _logger.LogError(ex, "Lỗi khi lưu cấu hình cổng gửi Email/SMS/Zalo.");
             return StatusCode(500, new { success = false, message = "Không thể lưu cấu hình: " + ex.Message });
         }
     }
 
     /// <summary>
     /// POST /CustomerCare/TestGateway
-    /// Gửi thử nghiệm 1 Email hoặc 1 SMS thật để kiểm tra kết nối ngay trên giao diện
+    /// Gửi thử nghiệm 1 Email, 1 SMS hoặc 1 tin Zalo ZNS để kiểm tra kết nối ngay trên giao diện
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> TestGateway([FromBody] TestGatewayDto dto)
@@ -247,6 +324,58 @@ public class CustomerCareController : Controller
                 message = ok
                     ? $"Đã gửi Email thật thành công tới {dto.Recipient}! Vui lòng kiểm tra Hộp thư đến (hoặc mục Thư rác/Quảng cáo)."
                     : $"Gửi Email thất bại: {err}"
+            });
+        }
+        else if (channel == "ZALO")
+        {
+            string normalizedPhone = ZaloOaNotificationSender.NormalizePhoneForZaloZns(dto.Recipient.Trim());
+            if (string.IsNullOrWhiteSpace(normalizedPhone))
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "Số điện thoại nhận thử Zalo ZNS không hợp lệ."
+                });
+            }
+
+            // Lấy khách hàng đầu tiên hoặc tạo đối tượng khách hàng tạm để đóng gói ZNS
+            var existingCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.Phone == dto.Recipient.Trim())
+                                   ?? await _context.Customers.FirstOrDefaultAsync();
+
+            var testCustomer = existingCustomer != null
+                ? new Customer
+                {
+                    CustomerId = existingCustomer.CustomerId,
+                    FullName = existingCustomer.FullName,
+                    Phone = dto.Recipient.Trim(),
+                    ZaloUserId = existingCustomer.ZaloUserId
+                }
+                : new Customer
+                {
+                    CustomerId = 1,
+                    FullName = "Khách hàng Test ZNS",
+                    Phone = dto.Recipient.Trim()
+                };
+
+            bool isOk = await _zaloSender.SendNotificationAsync(
+                customer: testCustomer,
+                appointment: null,
+                messageType: "Reminder24h",
+                segmentAtSendTime: "VIP",
+                content: $"[SalonCare ZNS Test] Kiểm tra kết nối Zalo OA ZNS tới SĐT {normalizedPhone}"
+            );
+
+            var latestLog = await _context.NotificationLogs
+                .AsNoTracking()
+                .OrderByDescending(l => l.LogId)
+                .FirstOrDefaultAsync(l => l.Channel == "ZaloOA" && l.CustomerId == testCustomer.CustomerId);
+
+            return Json(new
+            {
+                success = isOk,
+                message = isOk
+                    ? $"Gửi thử Zalo ZNS thành công tới SĐT {normalizedPhone}! Mã tin (msg_id): {latestLog?.ExternalMessageId ?? "zns_ok"}. (Xem chi tiết JSON Payload tại mục Nhật ký Nhắc lịch)"
+                    : $"Gửi Zalo ZNS thất bại tới {normalizedPhone}: {latestLog?.ErrorMessage ?? "Vui lòng kiểm tra lại Access Token Zalo OA."}"
             });
         }
         else
@@ -308,7 +437,7 @@ public class CustomerCareController : Controller
         }
 
         string channel = (dto.Channel ?? "SMS").Trim().ToUpperInvariant();
-        if (channel != "EMAIL" && channel != "SMS")
+        if (channel != "EMAIL" && channel != "SMS" && channel != "ZALO")
             channel = "SMS";
 
         // Kiểm tra ngay xem cổng Email hoặc SMS đã được cấu hình tài khoản thật chưa
@@ -416,6 +545,7 @@ public class CustomerCareController : Controller
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                 var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
                 var smsService = scope.ServiceProvider.GetRequiredService<ISmsService>();
+                var zaloSender = scope.ServiceProvider.GetRequiredService<ZaloOaNotificationSender>();
 
                 foreach (var cust in recipients)
                 {
@@ -445,6 +575,31 @@ public class CustomerCareController : Controller
                             "Thông báo ưu đãi & Chăm sóc từ SalonCare Spa ✨",
                             personalizedMsg,
                             cust.FullName);
+                    }
+                    else if (channel == "ZALO")
+                    {
+                        var plainText = System.Text.RegularExpressions.Regex.Replace(personalizedMsg, "<.*?>", string.Empty);
+                        var tempCustomer = new Customer
+                        {
+                            CustomerId = cust.CustomerId,
+                            FullName = cust.FullName,
+                            Phone = cust.Phone ?? string.Empty
+                        };
+                        isSent = await zaloSender.SendNotificationAsync(
+                            customer: tempCustomer,
+                            appointment: null,
+                            messageType: "WinBackPromo",
+                            segmentAtSendTime: targetGroup,
+                            content: plainText
+                        );
+                        if (isSent)
+                        {
+                            recipientAddress = ZaloOaNotificationSender.NormalizePhoneForZaloZns(recipientAddress);
+                        }
+                        else
+                        {
+                            errorMsg = "Gửi Zalo ZNS thất bại (Kiểm tra Access Token hoặc chế độ Sandbox).";
+                        }
                     }
                     else
                     {
@@ -550,6 +705,16 @@ public class GatewayConfigDto
     public string AccountSid { get; set; } = string.Empty;
     public string? AuthToken { get; set; }
     public string FromPhoneNumber { get; set; } = string.Empty;
+
+    // Cấu hình Zalo OA / ZNS (lưu vào bảng dbo.system_configs)
+    public string ZaloUseSandboxMode { get; set; } = "true";
+    public string ZaloAppId { get; set; } = string.Empty;
+    public string ZaloAppSecret { get; set; } = string.Empty;
+    public string ZaloAccessToken { get; set; } = string.Empty;
+    public string ZaloRefreshToken { get; set; } = string.Empty;
+    public string ZaloReminderTemplateId { get; set; } = "318920";
+    public string ZaloPromoTemplateId { get; set; } = "318925";
+    public string PreferredChannel { get; set; } = "SmartFallback";
 }
 
 public class TestGatewayDto

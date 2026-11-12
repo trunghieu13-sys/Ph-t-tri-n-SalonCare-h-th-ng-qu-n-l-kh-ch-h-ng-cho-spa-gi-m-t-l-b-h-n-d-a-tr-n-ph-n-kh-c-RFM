@@ -76,4 +76,10 @@ public class Customer
 
     [Column("no_show_count")]
     public int NoShowCount { get; set; } = 0;
+
+    [MaxLength(100)]
+    [Column("zalo_user_id")]
+    public string? ZaloUserId { get; set; }
+
+    public virtual RfmScore? RfmScore { get; set; }
 }

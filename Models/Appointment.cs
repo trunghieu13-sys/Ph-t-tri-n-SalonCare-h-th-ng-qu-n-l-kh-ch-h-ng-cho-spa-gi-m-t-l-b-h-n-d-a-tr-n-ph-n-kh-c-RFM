@@ -83,5 +83,14 @@ public class Appointment
     [Column("hidden_at")]
     public DateTime? HiddenAt { get; set; }
 
+    [Column("is_reminder_24h_sent")]
+    public bool IsReminder24hSent { get; set; } = false;
+
+    [Column("is_reminder_2h_sent")]
+    public bool IsReminder2hSent { get; set; } = false;
+
+    [Column("confirmation_token")]
+    public Guid ConfirmationToken { get; set; } = Guid.NewGuid();
+
     public virtual ICollection<AppointmentService> AppointmentServices { get; set; } = new List<AppointmentService>();
 }

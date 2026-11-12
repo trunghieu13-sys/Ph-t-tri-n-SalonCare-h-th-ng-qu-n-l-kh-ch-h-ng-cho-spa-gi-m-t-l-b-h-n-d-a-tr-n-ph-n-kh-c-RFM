@@ -12,6 +12,17 @@ public interface IAuditLogService
         string? entityId = null,
         string? ipAddress = null);
 
+    Task LogActionAsync(
+        string moduleName,
+        string actionType,
+        string? entityId,
+        string description) => LogActivityAsync(null, moduleName, actionType, description, entityId, null);
+
+    Task LogActionAsync(
+        string moduleName,
+        string actionType,
+        string description) => LogActivityAsync(null, moduleName, actionType, description, null, null);
+
     Task<AuditLogQueryResultDto> GetLogsAsync(
         long? employeeId = null,
         string? moduleName = null,

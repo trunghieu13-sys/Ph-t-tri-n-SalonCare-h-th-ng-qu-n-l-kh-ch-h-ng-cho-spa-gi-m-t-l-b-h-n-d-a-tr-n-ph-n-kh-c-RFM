@@ -207,6 +207,14 @@
                         <i class="fa-solid fa-users w-5 text-center shrink-0"></i>
                         <span class="sidebar-text">Khách hàng</span>
                     </button>
+                    <button data-view="rfmSegmentationView" title="Phân khúc RFM" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                        <i class="fa-solid fa-layer-group w-5 text-center shrink-0 text-pink-400"></i>
+                        <span class="sidebar-text">Phân khúc RFM</span>
+                    </button>
+                    <button data-view="rfmNotificationsView" title="Nhật ký nhắc lịch" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                        <i class="fa-solid fa-bell-concierge w-5 text-center shrink-0 text-cyan-400"></i>
+                        <span class="sidebar-text">Nhật ký nhắc lịch</span>
+                    </button>
                     <button data-view="appointmentsView" title="Lịch hẹn" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
                         <i class="fa-regular fa-calendar-check w-5 text-center shrink-0"></i>
                         <span class="sidebar-text">Lịch hẹn</span>
@@ -882,74 +890,120 @@
         </div>
     </div>
 
-    <!-- Modal: Cấu hình Cổng gửi Gmail SMTP & SMS Gateway (Twilio/eSMS) -->
+    <!-- Modal: Xác nhận Xóa Khách Hàng (Dark Glassmorphism) -->
+    <div id="deleteCustomerModal" class="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300 p-4">
+        <div class="glass-card rounded-3xl border border-rose-500/30 w-full max-w-md p-6 shadow-2xl relative transform scale-95 transition-transform duration-300">
+            <button type="button" onclick="closeModal('deleteCustomerModal')" class="absolute top-4 right-4 text-slate-400 hover:text-white transition">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <div class="flex items-center space-x-3 mb-4">
+                <div class="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center text-xl shrink-0 shadow-lg shadow-rose-500/20">
+                    <i class="fa-solid fa-user-xmark"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">Xác Nhận Xóa Khách Hàng</h3>
+                    <p class="text-[11px] text-slate-400">Hành động này sẽ xóa hồ sơ khách hàng khỏi cơ sở dữ liệu.</p>
+                </div>
+            </div>
+            <input type="hidden" id="deleteCustomerId" value="0" />
+            <div class="space-y-3 mb-5 text-xs text-slate-300">
+                <div class="bg-white/5 p-3.5 rounded-xl border border-white/10 space-y-1.5">
+                    <p class="flex items-center justify-between">
+                        <span class="text-slate-400">Khách hàng:</span>
+                        <strong id="deleteCustomerName" class="text-white font-bold text-sm"></strong>
+                    </p>
+                    <p class="flex items-center justify-between">
+                        <span class="text-slate-400">Số điện thoại:</span>
+                        <span id="deleteCustomerPhone" class="text-purple-300 font-mono font-semibold"></span>
+                    </p>
+                    <p id="deleteCustomerApptNotice" class="text-amber-400 text-[11px] pt-1 border-t border-white/5"></p>
+                </div>
+                <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] flex items-start gap-2 leading-relaxed">
+                    <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0 text-rose-400"></i>
+                    <span>Cảnh báo: Dữ liệu khách hàng cùng toàn bộ lịch hẹn và tương tác liên quan sẽ bị xóa vĩnh viễn. Hệ thống sẽ tự động lưu nhật ký kiểm toán (Audit Log).</span>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 text-xs">
+                <button type="button" onclick="closeModal('deleteCustomerModal')" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-semibold transition">Hủy bỏ</button>
+                <button type="button" id="confirmDeleteCustomerBtn" onclick="handleDeleteCustomerSubmit()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold shadow-lg shadow-rose-600/30 flex items-center space-x-2 transition">
+                    <i id="deleteCustomerSpinner" class="fa-solid fa-circle-notch fa-spin hidden"></i>
+                    <i id="deleteCustomerIcon" class="fa-solid fa-trash-can"></i>
+                    <span id="deleteCustomerBtnText">Xác nhận xóa</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Cấu hình Cổng gửi Gmail SMTP, SMS Gateway (Twilio) & Zalo OA / ZNS -->
     <div id="gatewayConfigModal" class="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300 p-4">
-        <div class="glass-card rounded-3xl border border-white/20 w-full max-w-3xl p-6 sm:p-8 shadow-2xl relative transform scale-95 transition-transform duration-300 max-h-[92vh] overflow-y-auto custom-scrollbar">
+        <div class="glass-card rounded-3xl border border-white/20 w-full max-w-6xl p-6 sm:p-7 shadow-2xl relative transform scale-95 transition-transform duration-300 max-h-[92vh] overflow-y-auto custom-scrollbar">
             <button type="button" onclick="closeModal('gatewayConfigModal')" class="absolute top-5 right-5 text-slate-400 hover:text-white transition">
                 <i class="fa-solid fa-xmark text-xl"></i>
             </button>
 
             <div class="flex items-center space-x-3 mb-5 pb-4 border-b border-white/10">
-                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white text-xl shadow-lg shadow-purple-600/30 shrink-0">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center text-white text-xl shadow-lg shadow-purple-600/30 shrink-0">
                     <i class="fa-solid fa-tower-broadcast"></i>
                 </div>
                 <div>
-                    <h3 class="text-lg font-bold text-white">Cấu Hình Cổng Gửi Gmail SMTP & SMS Thật</h3>
-                    <p class="text-xs text-slate-400">Nhập tài khoản Gmail (App Password 16 ký tự) và Twilio API để hệ thống gửi thư & SMS thật tới khách hàng.</p>
+                    <h3 class="text-lg font-bold text-white">Cấu Hình Cổng Gửi Đa Kênh: Gmail SMTP, SMS Twilio & Zalo OA / ZNS</h3>
+                    <p class="text-xs text-slate-400">Nhập tài khoản Gmail (App Password 16 ký tự), Twilio SMS API và Token Zalo Official Account (ZNS) để hệ thống gửi thông báo thật hoặc chạy chế độ Giả lập (Sandbox).</p>
                 </div>
             </div>
 
             <form id="gatewayConfigForm" onsubmit="handleSaveGatewayConfig(event)" class="space-y-5 text-xs">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
                     <!-- Cột 1: Cấu hình Gmail SMTP -->
-                    <div class="p-4 rounded-2xl bg-white/5 border border-purple-500/30 space-y-3.5">
-                        <div class="flex items-center justify-between">
-                            <span class="font-bold text-purple-300 text-sm flex items-center gap-2">
-                                <i class="fa-solid fa-envelope text-purple-400"></i> 1. Cấu hình Gmail (MailKit SMTP)
-                            </span>
-                            <span id="modalEmailStatusBadge" class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-semibold">Chưa cấu hình</span>
-                        </div>
-
-                        <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-slate-300 space-y-1">
-                            <p class="font-semibold text-purple-300"><i class="fa-solid fa-circle-info mr-1"></i> Hướng dẫn lấy Mật khẩu ứng dụng Gmail (1 phút):</p>
-                            <ol class="list-decimal list-inside space-y-0.5 text-slate-400">
-                                <li>Bật xác minh 2 bước cho Gmail của bạn.</li>
-                                <li>Truy cập <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-cyan-400 underline hover:text-cyan-300 font-semibold">myaccount.google.com/apppasswords</a></li>
-                                <li>Tạo App Password mới và dán chuỗi <b>16 ký tự</b> vào ô bên dưới.</li>
-                            </ol>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-2">
-                            <div class="col-span-2">
-                                <label class="block text-slate-300 font-semibold mb-1">SMTP Server</label>
-                                <input type="text" id="cfgSmtpServer" value="smtp.gmail.com" class="w-full glass-input rounded-xl p-2.5 text-white" />
+                    <div class="p-4 rounded-2xl bg-white/5 border border-purple-500/30 space-y-3.5 flex flex-col justify-between">
+                        <div class="space-y-3.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-purple-300 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-envelope text-purple-400"></i> 1. Cấu hình Gmail (MailKit SMTP)
+                                </span>
+                                <span id="modalEmailStatusBadge" class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-semibold">Chưa cấu hình</span>
                             </div>
+
+                            <div class="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-[11px] text-slate-300 space-y-1">
+                                <p class="font-semibold text-purple-300"><i class="fa-solid fa-circle-info mr-1"></i> Hướng dẫn lấy Mật khẩu ứng dụng Gmail (1 phút):</p>
+                                <ol class="list-decimal list-inside space-y-0.5 text-slate-400">
+                                    <li>Bật xác minh 2 bước cho Gmail của bạn.</li>
+                                    <li>Truy cập <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-cyan-400 underline hover:text-cyan-300 font-semibold">myaccount.google.com/apppasswords</a></li>
+                                    <li>Tạo App Password mới và dán chuỗi <b>16 ký tự</b> vào ô bên dưới.</li>
+                                </ol>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="col-span-2">
+                                    <label class="block text-slate-300 font-semibold mb-1">SMTP Server</label>
+                                    <input type="text" id="cfgSmtpServer" value="smtp.gmail.com" class="w-full glass-input rounded-xl p-2.5 text-white" />
+                                </div>
+                                <div>
+                                    <label class="block text-slate-300 font-semibold mb-1">Port</label>
+                                    <input type="number" id="cfgSmtpPort" value="587" class="w-full glass-input rounded-xl p-2.5 text-white" />
+                                </div>
+                            </div>
+
                             <div>
-                                <label class="block text-slate-300 font-semibold mb-1">Port</label>
-                                <input type="number" id="cfgSmtpPort" value="587" class="w-full glass-input rounded-xl p-2.5 text-white" />
+                                <label class="block text-slate-300 font-semibold mb-1">Tên thương hiệu hiển thị</label>
+                                <input type="text" id="cfgSenderName" value="SalonCare Spa & Beauty" placeholder="SalonCare Spa & Beauty" class="w-full glass-input rounded-xl p-2.5 text-white" />
                             </div>
-                        </div>
 
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Tên thương hiệu hiển thị</label>
-                            <input type="text" id="cfgSenderName" value="SalonCare Spa & Beauty" placeholder="SalonCare Spa & Beauty" class="w-full glass-input rounded-xl p-2.5 text-white" />
-                        </div>
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Địa chỉ Gmail gửi đi <span class="text-rose-400">*</span></label>
+                                <input type="email" id="cfgEmailUsername" placeholder="VD: hieudzzzggg@gmail.com" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500" />
+                            </div>
 
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Địa chỉ Gmail gửi đi <span class="text-rose-400">*</span></label>
-                            <input type="email" id="cfgEmailUsername" placeholder="VD: hieudzzzggg@gmail.com" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500" />
-                        </div>
-
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Mật khẩu ứng dụng Google (16 ký tự) <span class="text-rose-400">*</span></label>
-                            <input type="password" id="cfgEmailPassword" placeholder="Nhập 16 ký tự App Password (vd: abcd efgh ijkl mnop)" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500" />
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Mật khẩu ứng dụng Google (16 ký tự) <span class="text-rose-400">*</span></label>
+                                <input type="password" id="cfgEmailPassword" placeholder="Nhập 16 ký tự App Password (vd: abcd efgh ijkl mnop)" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500" />
+                            </div>
                         </div>
 
                         <!-- Gửi thử Email -->
-                        <div class="pt-2 border-t border-white/10">
+                        <div class="pt-3 border-t border-white/10">
                             <label class="block text-slate-400 mb-1">Gửi thử Email kiểm tra tới:</label>
                             <div class="flex gap-2">
-                                <input type="email" id="testEmailRecipient" placeholder="Nhập email nhận thử (vd: hieudzzzggg@gmail.com)" class="flex-1 glass-input rounded-xl p-2 text-white placeholder-slate-500" />
+                                <input type="email" id="testEmailRecipient" placeholder="Nhập email nhận thử..." class="flex-1 glass-input rounded-xl p-2 text-white placeholder-slate-500" />
                                 <button type="button" id="btnTestEmail" onclick="handleTestGateway('EMAIL')" class="px-3 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600 border border-purple-500/40 text-purple-200 hover:text-white font-semibold whitespace-nowrap transition">
                                     <i class="fa-solid fa-paper-plane mr-1"></i> Gửi thử
                                 </button>
@@ -958,44 +1012,117 @@
                     </div>
 
                     <!-- Cột 2: Cấu hình SMS Twilio -->
-                    <div class="p-4 rounded-2xl bg-white/5 border border-pink-500/30 space-y-3.5">
-                        <div class="flex items-center justify-between">
-                            <span class="font-bold text-pink-300 text-sm flex items-center gap-2">
-                                <i class="fa-solid fa-comment-sms text-pink-400"></i> 2. Cấu hình SMS (Twilio API)
-                            </span>
-                            <span id="modalSmsStatusBadge" class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-semibold">Chưa cấu hình</span>
-                        </div>
+                    <div class="p-4 rounded-2xl bg-white/5 border border-pink-500/30 space-y-3.5 flex flex-col justify-between">
+                        <div class="space-y-3.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-pink-300 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-comment-sms text-pink-400"></i> 2. Cấu hình SMS (Twilio API)
+                                </span>
+                                <span id="modalSmsStatusBadge" class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-semibold">Chưa cấu hình</span>
+                            </div>
 
-                        <div class="p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 text-[11px] text-slate-300 space-y-1">
-                            <p class="font-semibold text-pink-300"><i class="fa-solid fa-circle-info mr-1"></i> Hướng dẫn lấy khóa SMS Twilio:</p>
-                            <ol class="list-decimal list-inside space-y-0.5 text-slate-400">
-                                <li>Đăng nhập <a href="https://console.twilio.com" target="_blank" class="text-cyan-400 underline hover:text-cyan-300 font-semibold">console.twilio.com</a> để lấy <b>Account SID</b> & <b>Auth Token</b>.</li>
-                                <li>Hệ thống tự động chuyển SĐT Việt Nam (<code>0886...</code>) sang chuẩn quốc tế (<code>+84886...</code>).</li>
-                            </ol>
-                        </div>
+                            <div class="p-3 rounded-xl bg-pink-500/10 border border-pink-500/20 text-[11px] text-slate-300 space-y-1">
+                                <p class="font-semibold text-pink-300"><i class="fa-solid fa-circle-info mr-1"></i> Hướng dẫn lấy khóa SMS Twilio:</p>
+                                <ol class="list-decimal list-inside space-y-0.5 text-slate-400">
+                                    <li>Đăng nhập <a href="https://console.twilio.com" target="_blank" class="text-cyan-400 underline hover:text-cyan-300 font-semibold">console.twilio.com</a> để lấy <b>Account SID</b> & <b>Auth Token</b>.</li>
+                                    <li>Hệ thống tự động chuyển SĐT Việt Nam (<code>0886...</code>) sang chuẩn quốc tế (<code>+84886...</code>).</li>
+                                </ol>
+                            </div>
 
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Twilio Account SID</label>
-                            <input type="text" id="cfgSmsAccountSid" placeholder="VD: ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500 font-mono" />
-                        </div>
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Twilio Account SID</label>
+                                <input type="text" id="cfgSmsAccountSid" placeholder="VD: ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500 font-mono" />
+                            </div>
 
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Twilio Auth Token</label>
-                            <input type="password" id="cfgSmsAuthToken" placeholder="Nhập Auth Token từ Twilio Console" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500 font-mono" />
-                        </div>
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Twilio Auth Token</label>
+                                <input type="password" id="cfgSmsAuthToken" placeholder="Nhập Auth Token từ Twilio Console" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500 font-mono" />
+                            </div>
 
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Số điện thoại gửi đi (Twilio Phone Number)</label>
-                            <input type="text" id="cfgSmsFromPhone" placeholder="VD: +12565550199" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500 font-mono" />
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Số điện thoại gửi đi (Twilio Phone Number)</label>
+                                <input type="text" id="cfgSmsFromPhone" placeholder="VD: +12565550199" class="w-full glass-input rounded-xl p-2.5 text-white placeholder-slate-500 font-mono" />
+                            </div>
                         </div>
 
                         <!-- Gửi thử SMS -->
-                        <div class="pt-2 border-t border-white/10">
+                        <div class="pt-3 border-t border-white/10">
                             <label class="block text-slate-400 mb-1">Gửi thử SMS kiểm tra tới SĐT:</label>
                             <div class="flex gap-2">
                                 <input type="text" id="testSmsRecipient" placeholder="Nhập SĐT nhận thử (vd: 0886091716)" class="flex-1 glass-input rounded-xl p-2 text-white placeholder-slate-500" />
                                 <button type="button" id="btnTestSms" onclick="handleTestGateway('SMS')" class="px-3 py-2 rounded-xl bg-pink-600/30 hover:bg-pink-600 border border-pink-500/40 text-pink-200 hover:text-white font-semibold whitespace-nowrap transition">
                                     <i class="fa-solid fa-paper-plane mr-1"></i> Gửi thử
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cột 3: Cấu hình Zalo OA / ZNS (Zalo Notification Service) -->
+                    <div class="p-4 rounded-2xl bg-blue-950/20 border border-blue-500/35 space-y-3 flex flex-col justify-between">
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="font-bold text-blue-300 text-sm flex items-center gap-2">
+                                    <i class="fa-solid fa-paper-plane text-blue-400"></i> 3. Cấu hình Zalo OA / ZNS
+                                </span>
+                                <span id="modalZaloStatusBadge" class="px-2 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold">Chế độ Sandbox</span>
+                            </div>
+
+                            <div class="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/25 text-[11px] text-slate-300 space-y-1">
+                                <p class="font-semibold text-blue-300"><i class="fa-solid fa-bolt mr-1"></i> Tích hợp Zalo ZNS & Auto-Refresh Token:</p>
+                                <p class="text-slate-400 leading-relaxed">
+                                    • <b>Sandbox (true):</b> Đóng gói JSON ZNS + tạo link xác nhận 1-Click mà không cần OA tích vàng.<br/>
+                                    • <b>Production (false):</b> Gọi thật <code class="text-cyan-300">business.openapi.zalo.me</code> và tự động Refresh Token khi lỗi <code class="text-amber-300">-216</code>.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label class="block text-blue-200 font-semibold mb-1">Chế độ vận hành (<code class="text-blue-300">Zalo_UseSandboxMode</code>)</label>
+                                <select id="cfgZaloSandboxMode" class="w-full glass-input rounded-xl p-2 text-white bg-slate-900 border border-blue-500/30">
+                                    <option value="true">🟢 true — Chế độ Giả lập (Sandbox / Demo Đầy Đủ)</option>
+                                    <option value="false">🔵 false — Chế độ Thật (Gọi REST API Zalo ZNS thật)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Zalo OA Access Token (<code class="text-blue-300">Zalo_AccessToken</code>)</label>
+                                <input type="password" id="cfgZaloAccessToken" placeholder="Dán Access Token của Zalo OA Tích vàng (hiệu lực 25h)" class="w-full glass-input rounded-xl p-2 text-white placeholder-slate-500 font-mono" />
+                            </div>
+
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-1">Zalo OA Refresh Token (<code class="text-blue-300">Zalo_RefreshToken</code>)</label>
+                                <input type="password" id="cfgZaloRefreshToken" placeholder="Dán Refresh Token (tự động cấp lại Token khi lỗi -216)" class="w-full glass-input rounded-xl p-2 text-white placeholder-slate-500 font-mono" />
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-slate-300 font-semibold mb-1">Zalo App ID</label>
+                                    <input type="text" id="cfgZaloAppId" placeholder="VD: 42891029384..." class="w-full glass-input rounded-xl p-2 text-white font-mono" />
+                                </div>
+                                <div>
+                                    <label class="block text-slate-300 font-semibold mb-1">Zalo App Secret</label>
+                                    <input type="password" id="cfgZaloAppSecret" placeholder="App Secret" class="w-full glass-input rounded-xl p-2 text-white font-mono" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-slate-300 font-semibold mb-1">Mã mẫu ZNS Nhắc lịch</label>
+                                    <input type="text" id="cfgZaloReminderTemplateId" placeholder="VD: 318920" class="w-full glass-input rounded-xl p-2 text-white font-mono" />
+                                </div>
+                                <div>
+                                    <label class="block text-slate-300 font-semibold mb-1">Mã mẫu ZNS Voucher</label>
+                                    <input type="text" id="cfgZaloPromoTemplateId" placeholder="VD: 318925" class="w-full glass-input rounded-xl p-2 text-white font-mono" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Gửi thử Zalo ZNS -->
+                        <div class="pt-3 border-t border-white/10">
+                            <label class="block text-slate-400 mb-1">Gửi thử Zalo ZNS kiểm tra tới SĐT:</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="testZaloRecipient" placeholder="Nhập SĐT nhận thử (vd: 0901234567)" class="flex-1 glass-input rounded-xl p-2 text-white placeholder-slate-500" />
+                                <button type="button" id="btnTestZalo" onclick="handleTestGateway('ZALO')" class="px-3 py-2 rounded-xl bg-blue-600/30 hover:bg-blue-600 border border-blue-500/40 text-blue-200 hover:text-white font-semibold whitespace-nowrap transition">
+                                    <i class="fa-solid fa-paper-plane mr-1"></i> Gửi thử ZNS
                                 </button>
                             </div>
                         </div>
@@ -1008,10 +1135,10 @@
                     <button type="button" onclick="closeModal('gatewayConfigModal')" class="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-semibold transition">
                         Đóng
                     </button>
-                    <button type="submit" id="saveGatewayConfigBtn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold shadow-lg shadow-purple-600/30 flex items-center space-x-2 transition">
+                    <button type="submit" id="saveGatewayConfigBtn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 hover:opacity-95 text-white font-bold shadow-lg shadow-purple-600/30 flex items-center space-x-2 transition">
                         <i id="saveGatewaySpinner" class="fa-solid fa-circle-notch fa-spin hidden"></i>
                         <i class="fa-solid fa-floppy-disk"></i>
-                        <span>Lưu cấu hình Gmail & SMS</span>
+                        <span>Lưu cấu hình Gmail, SMS & Zalo OA</span>
                     </button>
                 </div>
             </form>
@@ -1063,15 +1190,29 @@
                 <i class="fa-solid fa-xmark text-xl"></i>
             </button>
 
-            <!-- Tiêu đề Modal -->
-            <div class="mb-6 border-b border-white/10 pb-4">
-                <h3 class="text-xl font-bold text-white flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white text-sm shadow-lg shadow-purple-600/30">
-                        <i class="fa-solid fa-user-plus"></i>
-                    </div>
-                    <span>Thêm Mới Khách Hàng</span>
-                </h3>
-                <p class="text-xs text-slate-400 mt-1">Khởi tạo hồ sơ khách hàng mới và đồng bộ trực tiếp vào cơ sở dữ liệu SalonCare CRM.</p>
+            <!-- Tiêu đề Modal & Chuyển Tab (Nhập thủ công / Nhập từ File Excel-CSV) -->
+            <div class="mb-5 border-b border-white/10 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pr-8">
+                <div>
+                    <h3 class="text-xl font-bold text-white flex items-center gap-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-600 flex items-center justify-center text-white text-sm shadow-lg shadow-purple-600/30">
+                            <i class="fa-solid fa-user-plus"></i>
+                        </div>
+                        <span>Thêm Mới Khách Hàng</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mt-1">Khởi tạo hồ sơ thủ công hoặc tải lên file mẫu chuẩn (.xlsx / .csv) lưu trực tiếp vào SQL Server.</p>
+                </div>
+
+                <!-- 2 Nút Chuyển chế độ -->
+                <div class="flex items-center bg-slate-900/90 p-1 rounded-xl border border-white/10 shrink-0 text-xs">
+                    <button type="button" id="tabBtnManualCust" onclick="switchAddCustomerTab('manual')"
+                        class="px-3.5 py-2 rounded-lg font-semibold bg-purple-600 text-white shadow-md transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-keyboard"></i> Nhập thủ công
+                    </button>
+                    <button type="button" id="tabBtnImportCust" onclick="switchAddCustomerTab('import')"
+                        class="px-3.5 py-2 rounded-lg font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i> Tải lên File (.xlsx / .csv)
+                    </button>
+                </div>
             </div>
 
             <!-- Khung thông báo lỗi trong modal (nếu có) -->
@@ -1080,6 +1221,10 @@
                 <span id="customerFormErrorMsg">Vui lòng kiểm tra lại thông tin.</span>
             </div>
 
+            <!-- ================================================================= -->
+            <!-- TAB 1: FORM NHẬP THỦ CÔNG TỪNG KHÁCH HÀNG                         -->
+            <!-- ================================================================= -->
+            <div id="addCustTabManual">
             <!-- Form Nhập Liệu 2 Cột -->
             <form id="createCustomerForm" onsubmit="handleCreateCustomerSubmit(event)" class="space-y-5 text-xs">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1227,6 +1372,107 @@
                     </button>
                 </div>
             </form>
+            </div>
+
+            <!-- ================================================================= -->
+            <!-- TAB 2: TẢI FILE MẪU CHUẨN & NHẬP DỮ LIỆU TỰ ĐỘNG (.XLSX / .CSV)   -->
+            <!-- ================================================================= -->
+            <div id="addCustTabImport" class="hidden space-y-5 text-xs">
+                <!-- Bước 1: Tải file mẫu chuẩn -->
+                <div class="p-4 rounded-2xl bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-900/80 border border-purple-500/30 space-y-3">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-lg bg-purple-600 text-white text-xs flex items-center justify-center font-bold">1</span>
+                                <span>Tải File Mẫu Chuẩn (6 Cột)</span>
+                            </h4>
+                            <p class="text-[11px] text-slate-300 mt-1">Tải xuống file mẫu có sẵn định dạng 6 cột chuẩn để điền dữ liệu khách hàng & lịch sử dịch vụ.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button type="button" onclick="downloadCustomerTemplate('xlsx')"
+                                class="px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 font-semibold flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-file-excel"></i> Tải mẫu .XLSX
+                            </button>
+                            <button type="button" onclick="downloadCustomerTemplate('csv')"
+                                class="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/40 font-semibold flex items-center gap-1.5 transition">
+                                <i class="fa-solid fa-file-csv"></i> Tải mẫu .CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Bảng mô tả 6 cột chuẩn -->
+                    <div class="overflow-x-auto rounded-xl border border-white/10 bg-slate-950/60">
+                        <table class="w-full text-left text-[11px]">
+                            <thead>
+                                <tr class="bg-purple-600/25 text-purple-200 border-b border-white/10">
+                                    <th class="p-2.5 font-semibold">1. Tên khách</th>
+                                    <th class="p-2.5 font-semibold">2. Số điện thoại</th>
+                                    <th class="p-2.5 font-semibold">3. Ngày làm dịch vụ gần nhất</th>
+                                    <th class="p-2.5 font-semibold">4. Tên dịch vụ</th>
+                                    <th class="p-2.5 font-semibold">5. Số tiền thanh toán</th>
+                                    <th class="p-2.5 font-semibold">6. Trạng thái (Hoàn thành / Bỏ hẹn)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-white/5 text-slate-300">
+                                <tr>
+                                    <td class="p-2.5 font-medium text-white">Nguyễn Thị Ngọc Bích</td>
+                                    <td class="p-2.5 font-mono text-purple-300">0912345689</td>
+                                    <td class="p-2.5">25/10/2026</td>
+                                    <td class="p-2.5">Chăm sóc da mặt chuyên sâu</td>
+                                    <td class="p-2.5 text-emerald-400 font-semibold">450,000</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">Hoàn thành</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-medium text-white">Lê Phương Thảo</td>
+                                    <td class="p-2.5 font-mono text-purple-300">0933445577</td>
+                                    <td class="p-2.5">05/11/2026</td>
+                                    <td class="p-2.5">Triệt lông công nghệ IPL</td>
+                                    <td class="p-2.5 text-emerald-400 font-semibold">800,000</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">Bỏ hẹn</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Bước 2: Chọn file và tải lên SQL Server -->
+                <form id="importCustomerFileForm" onsubmit="handleImportCustomersSubmit(event)" class="space-y-4">
+                    <div class="p-5 rounded-2xl border-2 border-dashed border-purple-500/40 hover:border-purple-400 bg-white/[0.02] hover:bg-white/[0.04] transition text-center">
+                        <input type="file" id="customerImportFileInput" accept=".xlsx,.csv" onchange="handleCustomerFileSelect(this)" class="hidden" />
+                        <label for="customerImportFileInput" class="cursor-pointer flex flex-col items-center justify-center space-y-2.5 py-2">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500/20 to-purple-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-2xl shadow-lg">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-white">Bấm vào đây để chọn file <span class="text-emerald-400">.xlsx</span> hoặc <span class="text-cyan-400">.csv</span></p>
+                                <p id="selectedImportFileName" class="text-xs text-slate-400 mt-1">Chưa có file nào được chọn (Hỗ trợ Excel .xlsx và .csv chuẩn UTF-8)</p>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Khung hiển thị kết quả sau khi tải lên -->
+                    <div id="importResultBox" class="hidden p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 space-y-2">
+                        <div class="flex items-center gap-2 font-bold text-emerald-300 text-sm">
+                            <i class="fa-solid fa-circle-check text-base"></i>
+                            <span id="importResultTitle">Đồng bộ vào SQL Server thành công!</span>
+                        </div>
+                        <p id="importResultDetail" class="text-xs text-slate-200 leading-relaxed"></p>
+                    </div>
+
+                    <div class="pt-3 border-t border-white/10 flex items-center justify-end space-x-3">
+                        <button type="button" onclick="closeModal('addCustomerModal')" 
+                            class="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-semibold transition">
+                            Đóng
+                        </button>
+                        <button type="submit" id="uploadCustomerFileBtn" 
+                            class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow-lg shadow-emerald-600/30 flex items-center space-x-2 transition">
+                            <i id="uploadCustomerSpinner" class="fa-solid fa-circle-notch fa-spin hidden"></i>
+                            <i id="uploadCustomerIcon" class="fa-solid fa-upload"></i>
+                            <span id="uploadCustomerText">Tải lên & Lưu vào SQL</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 

@@ -77,8 +77,24 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 // System Audit Logging Service (Nhật ký hệ thống & Bảo mật)
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 
-// Background Worker Service quét kịch bản tự động (5 phút/lần)
+// Must #2: RFM Segmentation Engine, Notification Senders (Zalo OA/ZNS, SMS, Email), Legacy Import & Reminder Worker
+builder.Services.AddHttpClient("ZaloZnsClient", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+});
+builder.Services.AddScoped<IRfmService, RfmService>();
+builder.Services.AddScoped<ZaloOaNotificationSender>();
+builder.Services.AddScoped<SmsNotificationSender>();
+builder.Services.AddScoped<EmailNotificationSender>();
+builder.Services.AddScoped<INotificationSender, ZaloOaNotificationSender>();
+builder.Services.AddScoped<INotificationSender, SmsNotificationSender>();
+builder.Services.AddScoped<INotificationSender, EmailNotificationSender>();
+builder.Services.AddScoped<IReminderOrchestrator, ReminderOrchestrator>();
+builder.Services.AddScoped<ILegacyImportService, LegacyImportService>();
+
+// Background Worker Service quét kịch bản tự động (5 phút/lần) & Nhắc lịch RFM (15 phút/lần)
 builder.Services.AddHostedService<AutomationBackgroundService>();
+builder.Services.AddHostedService<ReminderBackgroundWorker>();
 
 // ==========================================
 // 5. CẤU HÌNH MVC CONTROLLERS & VIEWS

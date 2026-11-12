@@ -231,16 +231,23 @@
             <button id="filterNewBtn" onclick="filterCustomers('Moi')" class="cust-filter-btn px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">
                 Khách mới (<span id="countNew">0</span>)
             </button>
+            <button id="filterAtRiskBtn" onclick="filterCustomers('AtRisk')" class="cust-filter-btn px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-rose-300 transition">
+                Nguy cơ rời bỏ (<span id="countAtRisk">0</span>)
+            </button>
         </div>
 
         <!-- Search & Add Actions -->
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap items-center gap-2.5">
             <div class="relative">
                 <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                 <input type="text" id="custSearchInput" oninput="searchCustomers()" placeholder="Tìm theo tên/SĐT..." 
                     class="pl-9 pr-4 py-2 glass-input rounded-xl text-xs text-white w-48 sm:w-64 focus:border-purple-500 transition-all">
             </div>
-            <button onclick="openAddCustomerModal()" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
+            <button onclick="openAddCustomerModal('import')" class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition">
+                <i class="fa-solid fa-file-import text-xs"></i>
+                <span>Nhập từ Excel / CSV</span>
+            </button>
+            <button onclick="openAddCustomerModal('manual')" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
                 <i class="fa-solid fa-user-plus text-xs"></i>
                 <span>Thêm khách mới</span>
             </button>
@@ -507,7 +514,7 @@
                     </h3>
                     <div class="flex items-center gap-3">
                         <button type="button" onclick="openGatewayConfigModal()" class="text-xs px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 flex items-center gap-1.5 font-semibold transition">
-                            <i class="fa-solid fa-gear"></i> Cấu hình Gmail & SMS thật
+                            <i class="fa-solid fa-gear"></i> Cấu hình Gmail, SMS & Zalo OA
                         </button>
                         <a asp-controller="Notification" asp-action="Index" class="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1.5 font-medium transition-colors">
                             <i class="fa-solid fa-up-right-from-square"></i> Cổng gửi nâng cao
@@ -597,22 +604,26 @@
                 </button>
             </div>
 
-            <!-- Trạng thái kết nối cổng Gmail & SMS -->
-            <div class="grid grid-cols-2 gap-2 text-[11px]">
+            <!-- Trạng thái kết nối cổng Gmail, SMS & Zalo OA -->
+            <div class="grid grid-cols-3 gap-2 text-[11px]">
                 <div onclick="openGatewayConfigModal()" class="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/40 cursor-pointer flex items-center justify-between transition">
-                    <span class="text-slate-300 flex items-center gap-1.5"><i class="fa-solid fa-envelope text-purple-400"></i> Gmail:</span>
+                    <span class="text-slate-300 flex items-center gap-1"><i class="fa-solid fa-envelope text-purple-400"></i> Gmail:</span>
                     <span id="ccEmailStatusPill" class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-semibold text-[10px]">Chưa cài</span>
                 </div>
                 <div onclick="openGatewayConfigModal()" class="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-pink-500/40 cursor-pointer flex items-center justify-between transition">
-                    <span class="text-slate-300 flex items-center gap-1.5"><i class="fa-solid fa-comment-sms text-pink-400"></i> SMS:</span>
+                    <span class="text-slate-300 flex items-center gap-1"><i class="fa-solid fa-comment-sms text-pink-400"></i> SMS:</span>
                     <span id="ccSmsStatusPill" class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-semibold text-[10px]">Chưa cài</span>
+                </div>
+                <div onclick="openGatewayConfigModal()" class="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-blue-500/40 cursor-pointer flex items-center justify-between transition">
+                    <span class="text-slate-300 flex items-center gap-1"><i class="fa-solid fa-paper-plane text-blue-400"></i> Zalo:</span>
+                    <span id="ccZaloStatusPill" class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold text-[10px]">Sandbox</span>
                 </div>
             </div>
 
             <div id="ccGatewayWarningBanner" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 space-y-1.5">
-                <p><i class="fa-solid fa-triangle-exclamation mr-1"></i> <b>Lưu ý:</b> Bạn cần nhập <b>Gmail + Mật khẩu ứng dụng (16 ký tự)</b> hoặc <b>Twilio SMS</b> để hệ thống gửi tin thật về máy khách hàng.</p>
+                <p><i class="fa-solid fa-triangle-exclamation mr-1"></i> <b>Lưu ý:</b> Bạn có thể nhập <b>Gmail + App Password</b>, <b>Twilio SMS</b> hoặc <b>Token Zalo OA</b> để gửi tin thật về máy khách hàng.</p>
                 <button type="button" onclick="openGatewayConfigModal()" class="w-full py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold transition">
-                    <i class="fa-solid fa-key mr-1"></i> Nhập tài khoản Gmail / SMS ngay
+                    <i class="fa-solid fa-key mr-1"></i> Nhập cấu hình Gmail / SMS / Zalo OA ngay
                 </button>
             </div>
 
@@ -620,6 +631,7 @@
                 <div>
                     <label class="block text-slate-300 mb-1.5 font-medium">Kênh gửi</label>
                     <select id="campaignChannel" class="w-full glass-input rounded-xl p-2.5 text-white bg-slate-900 border border-white/10 focus:border-purple-500 outline-none">
+                        <option value="ZALO">Zalo OA / ZNS (Zalo Notification Service)</option>
                         <option value="SMS">SMS Automation (Twilio / eSMS)</option>
                         <option value="EMAIL">Email Marketing (MailKit / SendGrid)</option>
                     </select>
@@ -1382,8 +1394,33 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Zalo Official Account / ZNS (Zalo Notification Service) -->
+            <div class="p-4 rounded-xl bg-blue-950/20 border border-blue-500/30 space-y-3 text-xs">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <span class="font-bold text-blue-300 flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane text-blue-400"></i> Zalo Official Account / ZNS (Zalo Notification Service)
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold">SmartFallback: ZaloOA → SMS → Email</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 font-semibold">Webhook SHA256 Ready</span>
+                    </div>
+                </div>
+                <p class="text-[11px] text-slate-300">
+                    Endpoint ZNS: <code class="text-cyan-300">https://business.openapi.zalo.me/message/template</code> • Webhook nhận 1-Click: <code class="text-amber-300">POST /api/webhooks/zalo</code>
+                </p>
+                <div class="flex items-center justify-end gap-2">
+                    <button type="button" onclick="openGatewayConfigModal()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition">
+                        <i class="fa-solid fa-gear mr-1"></i> Mở Cấu hình Token & Template Zalo OA
+                    </button>
+                    <button type="button" onclick="switchView('rfmNotificationsView')" class="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/30 font-semibold text-xs transition">
+                        <i class="fa-solid fa-bell-concierge mr-1"></i> Mở Nhật ký Zalo ZNS & Demo Webhook
+                    </button>
+                </div>
+            </div>
+
             <div class="text-right">
-                <button type="button" onclick="openGatewayConfigModal()" class="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-semibold text-xs">Mở Cấu Hình & Gửi Thử Gmail / SMS</button>
+                <button type="button" onclick="openGatewayConfigModal()" class="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 hover:opacity-95 text-white font-semibold text-xs">Mở Cấu Hình & Gửi Thử Gmail / SMS / Zalo OA</button>
             </div>
         </div>
     </div>
@@ -1574,6 +1611,363 @@
 </div>
 }
 
+<!-- VIEW 9: PHÂN KHÚC KHÁCH HÀNG RFM & CẤU HÌNH NGƯỠNG ĐỘNG (MUST #2) -->
+<div id="rfmSegmentationView" class="view-section space-y-6">
+    <!-- Top Header & Actions -->
+    <div class="glass-card rounded-2xl p-5 border border-pink-500/20 bg-gradient-to-r from-slate-900/90 via-purple-950/30 to-slate-900/90 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center space-x-4">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500/20 to-purple-600/30 border border-pink-500/40 flex items-center justify-center text-pink-400 text-xl shrink-0 shadow-lg shadow-pink-500/10">
+                <i class="fa-solid fa-layer-group"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <h2 class="text-lg font-bold text-white tracking-wide">Phân Khúc Khách Hàng RFM & Giảm Tỷ Lệ Bỏ Hẹn</h2>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/40 uppercase tracking-wider">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Explainable AI / RFM Engine
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Tự động phân tích Recency (R), Frequency (F), Monetary (M) và tần suất Bỏ hẹn (No-Show) theo ngưỡng động trong SQL Server.</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button type="button" onclick="openAddCustomerModal('import')" class="px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 text-xs font-semibold transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-import"></i> Import dữ liệu cũ (.xlsx/.csv)
+            </button>
+            <button type="button" id="btnSendWinBackPromo" onclick="sendWinBackPromoNow()" class="px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5">
+                <i class="fa-solid fa-gift"></i> Gửi ưu đãi nhóm Nguy cơ
+            </button>
+            <button type="button" id="btnRecalculateRfm" onclick="recalculateRfmNow()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition flex items-center gap-1.5">
+                <i id="recalcRfmIcon" class="fa-solid fa-rotate"></i>
+                <span id="recalcRfmText">Chạy tính lại RFM ngay</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sub-Tabs Switcher: Tab 1 (Tổng quan & Danh sách nhóm) | Tab 2 (Cấu hình ngưỡng động - Owner/Admin) -->
+    <div class="flex items-center justify-between flex-wrap gap-3 border-b border-white/10 pb-3">
+        <div class="flex items-center gap-2">
+            <button type="button" id="rfmTabBtnOverview" onclick="switchRfmSubTab('overview')" class="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white shadow-lg shadow-purple-600/30 transition flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie"></i>
+                <span>Tab 1: Tổng quan & Danh sách phân khúc</span>
+            </button>
+            @if (User.IsInRole("Owner") || User.IsInRole("Admin") || User.IsInRole("owner") || User.IsInRole("admin"))
+            {
+                <button type="button" id="rfmTabBtnConfig" onclick="switchRfmSubTab('config')" class="px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-amber-400"></i>
+                    <span>Tab 2: Cấu hình ngưỡng động (SystemConfigs)</span>
+                </button>
+            }
+        </div>
+        <div class="text-[11px] text-slate-400">
+            <i class="fa-regular fa-clock text-purple-400 mr-1"></i> Cập nhật RFM gần nhất: <strong id="rfmLastCalculatedTime" class="text-slate-200">Đang tải...</strong>
+        </div>
+    </div>
+
+    <!-- TAB 1 CONTENT: 5 KPI CARDS & CUSTOMER SEGMENT TABLE -->
+    <div id="rfmSubTabOverview" class="space-y-5">
+        <!-- 5 Clickable Segment KPI Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+            <!-- Card 1: VIP -->
+            <div onclick="filterRfmSegmentTable('VIP')" id="rfmCard_VIP" class="rfm-kpi-card cursor-pointer glass-card rounded-2xl p-4 border border-amber-500/30 hover:border-amber-400 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">VIP</span>
+                    <i class="fa-solid fa-crown text-amber-400 text-lg"></i>
+                </div>
+                <h3 id="rfmCountVip" class="text-2xl font-bold text-white mt-2">0</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Khách VIP chi tiêu cao / ghé thường xuyên</p>
+            </div>
+
+            <!-- Card 2: Loyal (Thân thiết) -->
+            <div onclick="filterRfmSegmentTable('Loyal')" id="rfmCard_Loyal" class="rfm-kpi-card cursor-pointer glass-card rounded-2xl p-4 border border-emerald-500/30 hover:border-emerald-400 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">LOYAL</span>
+                    <i class="fa-solid fa-heart text-emerald-400 text-lg"></i>
+                </div>
+                <h3 id="rfmCountLoyal" class="text-2xl font-bold text-white mt-2">0</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Khách thân thiết duy trì lịch đều</p>
+            </div>
+
+            <!-- Card 3: New (Khách mới / Vãng lai) -->
+            <div onclick="filterRfmSegmentTable('New')" id="rfmCard_New" class="rfm-kpi-card cursor-pointer glass-card rounded-2xl p-4 border border-cyan-500/30 hover:border-cyan-400 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">NEW</span>
+                    <i class="fa-solid fa-user-plus text-cyan-400 text-lg"></i>
+                </div>
+                <h3 id="rfmCountNew" class="text-2xl font-bold text-white mt-2">0</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Khách mới / Vãng lai (Nhắc lịch 2 mốc)</p>
+            </div>
+
+            <!-- Card 4: AtRisk (Nguy cơ rời bỏ) -->
+            <div onclick="filterRfmSegmentTable('AtRisk')" id="rfmCard_AtRisk" class="rfm-kpi-card cursor-pointer glass-card rounded-2xl p-4 border border-orange-500/30 hover:border-orange-400 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40">AT-RISK</span>
+                    <i class="fa-solid fa-person-walking-arrow-right text-orange-400 text-lg"></i>
+                </div>
+                <h3 id="rfmCountAtRisk" class="text-2xl font-bold text-orange-400 mt-2">0</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Nguy cơ rời bỏ (Cần gửi ưu đãi Win-back)</p>
+            </div>
+
+            <!-- Card 5: Cảnh báo bỏ hẹn (IsNoShowRisk) -->
+            <div onclick="filterRfmSegmentTable('NoShowRisk')" id="rfmCard_NoShowRisk" class="rfm-kpi-card cursor-pointer glass-card rounded-2xl p-4 border border-rose-500/30 hover:border-rose-400 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">NO-SHOW RISK</span>
+                    <i class="fa-solid fa-triangle-exclamation text-rose-400 text-lg"></i>
+                </div>
+                <h3 id="rfmCountNoShowRisk" class="text-2xl font-bold text-rose-400 mt-2">0</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Cảnh báo hay bỏ hẹn (Tự động nhắc 24h & 2h)</p>
+            </div>
+        </div>
+
+        <!-- Filter & Search Bar -->
+        <div class="glass-card p-4 rounded-2xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center flex-wrap gap-2">
+                <button type="button" onclick="filterRfmSegmentTable('ALL')" id="rfmPill_ALL" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-purple-600 text-white transition">
+                    Tất cả (<span id="rfmCountAll">0</span>)
+                </button>
+                <span id="rfmCurrentFilterLabel" class="text-xs text-purple-300 font-medium ml-2">Đang hiển thị: Tất cả phân khúc</span>
+            </div>
+            <div class="relative w-full sm:w-72">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="text" id="rfmSearchInput" oninput="debounceLoadRfmDashboard()" placeholder="Tìm tên khách hàng hoặc SĐT..." class="w-full pl-9 pr-4 py-2 glass-input rounded-xl text-xs text-white border border-white/10 focus:border-purple-500 outline-none" />
+            </div>
+        </div>
+
+        <!-- RFM Explainability Customer Table -->
+        <div class="glass-card rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead>
+                        <tr class="text-slate-400 border-b border-white/10 bg-white/[0.03] uppercase text-[11px]">
+                            <th class="p-3.5 font-semibold">Khách hàng</th>
+                            <th class="p-3.5 font-semibold text-center">R (Recency)</th>
+                            <th class="p-3.5 font-semibold text-center">F (Frequency)</th>
+                            <th class="p-3.5 font-semibold text-right">M (Monetary)</th>
+                            <th class="p-3.5 font-semibold text-center">Số lần Bỏ hẹn</th>
+                            <th class="p-3.5 font-semibold text-center">Phân khúc & Cảnh báo</th>
+                            <th class="p-3.5 font-semibold">Lý do xếp nhóm (Explainability - ReasonText)</th>
+                            <th class="p-3.5 font-semibold text-right">Chi tiết</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rfmCustomerTableBody" class="divide-y divide-white/5 text-slate-200">
+                        <tr>
+                            <td colspan="8" class="p-8 text-center text-slate-400">
+                                <i class="fa-solid fa-circle-notch fa-spin text-purple-400 mr-2"></i> Đang tải bảng phân khúc khách hàng RFM...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2 CONTENT: DYNAMIC RFM THRESHOLD CONFIGURATION (SystemConfigs) -->
+    @if (User.IsInRole("Owner") || User.IsInRole("Admin") || User.IsInRole("owner") || User.IsInRole("admin"))
+    {
+        <div id="rfmSubTabConfig" class="hidden space-y-5">
+            <div class="glass-card rounded-2xl p-6 border border-amber-500/30 space-y-5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                    <div>
+                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-amber-400"></i>
+                            <span>Cấu Hình Ngưỡng Động RFM & Nhắc Lịch (Bảng SystemConfigs)</span>
+                        </h3>
+                        <p class="text-xs text-slate-400 mt-1">Không hard-code ngưỡng trong code. Khi Chủ salon lưu thay đổi, hệ thống tự động ghi vết vào <code class="text-amber-300">AuditLogs</code> và tính toán lại phân khúc RFM ngay lập tức.</p>
+                    </div>
+                    <span class="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
+                        <i class="fa-solid fa-database mr-1"></i> SQL Server: dbo.system_configs
+                    </span>
+                </div>
+
+                <form id="rfmConfigForm" onsubmit="saveRfmSystemConfigs(event)" class="space-y-5">
+                    <div>
+                        <h4 class="text-xs font-bold text-amber-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-pie"></i> 1. Cấu hình Ngưỡng Phân Khúc RFM & Cảnh Báo Bỏ Hẹn
+                        </h4>
+                        <div id="rfmConfigInputsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                            <!-- Dynamically populated from /Rfm/GetDashboard RFM_* configs -->
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-white/10">
+                        <h4 class="text-xs font-bold text-blue-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-paper-plane text-blue-400"></i> 2. Cấu hình Tích Hợp Kênh Zalo OA / ZNS & Chiến Lược Gửi Dự Phòng (SmartFallback)
+                        </h4>
+                        <div id="zaloConfigInputsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                            <!-- Dynamically populated from /Rfm/GetDashboard Zalo_* & Notification_PreferredChannel configs -->
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-white/10 flex items-center justify-end gap-3">
+                        <button type="button" onclick="loadRfmDashboard()" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-semibold transition">
+                            Khôi phục giá trị hiện tại
+                        </button>
+                        <button type="submit" id="btnSaveRfmConfigs" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/25 transition flex items-center gap-2">
+                            <i class="fa-solid fa-floppy-disk"></i>
+                            <span>Lưu cấu hình RFM & Zalo OA vào SQL Server</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- VIEW 10: NHẬT KÝ NHẮC LỊCH TỰ ĐỘNG & XÁC NHẬN 1-CLICK (MUST #2 + ZALO OA / ZNS) -->
+<div id="rfmNotificationsView" class="view-section space-y-6">
+    <!-- Top Header -->
+    <div class="glass-card rounded-2xl p-5 border border-cyan-500/20 bg-gradient-to-r from-slate-900/90 via-cyan-950/25 to-slate-900/90 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center space-x-4">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/30 border border-cyan-500/40 flex items-center justify-center text-cyan-400 text-xl shrink-0 shadow-lg shadow-cyan-500/10">
+                <i class="fa-solid fa-bell-concierge"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <h2 class="text-lg font-bold text-white tracking-wide">Nhật Ký Nhắc Lịch Đa Kênh (Zalo OA ZNS / SMS / Email) & Webhook 1-Click</h2>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 uppercase tracking-wider">
+                        <i class="fa-solid fa-bolt mr-1"></i> Zalo ZNS + SmartFallback
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Ưu tiên gửi qua <strong class="text-blue-300">Zalo OA / ZNS</strong> (chuẩn hóa SĐT <code class="text-cyan-300">84xxxxxxxxx</code>, tự động Refresh Token khi lỗi <code class="text-amber-300">-216</code>, tự động Fallback sang <strong class="text-pink-300">SMS / Email</strong> nếu lỗi). Hỗ trợ nhận phản hồi qua <code class="text-emerald-300">POST /api/webhooks/zalo</code>.</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button type="button" onclick="openGatewayConfigModal()" class="px-3.5 py-2 rounded-xl bg-purple-600/25 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-bold transition flex items-center gap-1.5">
+                <i class="fa-solid fa-gear"></i>
+                <span>Cấu hình Zalo OA / Gmail / SMS</span>
+            </button>
+            <button type="button" onclick="sendDemoZaloZnsNow()" class="px-3.5 py-2 rounded-xl bg-blue-600/25 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/40 text-xs font-bold transition flex items-center gap-1.5">
+                <i class="fa-solid fa-code"></i>
+                <span>Gửi thử mẫu Zalo ZNS ngay</span>
+            </button>
+            <button type="button" onclick="triggerRemindersNow()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-cyan-600/30 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-paper-plane"></i>
+                <span>Quét & Chạy Worker nhắc lịch ngay</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 5 Summary Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+        <div class="glass-card rounded-2xl p-4 border border-white/10">
+            <span class="text-[11px] text-slate-400">Tổng tin đã gửi</span>
+            <h3 id="notifStatTotal" class="text-2xl font-bold text-white mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-cyan-500/20">
+            <span class="text-[11px] text-cyan-300">Nhắc trước 24h</span>
+            <h3 id="notifStat24h" class="text-2xl font-bold text-cyan-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-purple-500/20">
+            <span class="text-[11px] text-purple-300">Nhắc khẩn trước 2h</span>
+            <h3 id="notifStat2h" class="text-2xl font-bold text-purple-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-orange-500/20">
+            <span class="text-[11px] text-orange-300">Chiến dịch Win-Back</span>
+            <h3 id="notifStatWinBack" class="text-2xl font-bold text-orange-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-2xl p-4 border border-emerald-500/30">
+            <span class="text-[11px] text-emerald-300">Đã Xác nhận (Webhook / 1-Click)</span>
+            <h3 id="notifStatConfirmed" class="text-2xl font-bold text-emerald-400 mt-1">0</h3>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="glass-card rounded-2xl p-4 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div class="flex flex-wrap items-center gap-2.5">
+            <select id="notifFilterChannel" onchange="loadRfmNotificationLogs()" class="glass-input rounded-xl px-3 py-2 text-white bg-slate-900 border border-white/10">
+                <option value="ALL">📡 Tất cả kênh gửi (ZaloOA / SMS / Email)</option>
+                <option value="ZaloOA">🔵 Kênh Zalo OA / ZNS</option>
+                <option value="SMS">🟣 Kênh SMS (Twilio / eSMS)</option>
+                <option value="Email">🟢 Kênh Email (SMTP MailKit)</option>
+            </select>
+            <select id="notifFilterMessageType" onchange="loadRfmNotificationLogs()" class="glass-input rounded-xl px-3 py-2 text-white bg-slate-900 border border-white/10">
+                <option value="ALL">📩 Tất cả loại tin nhắn</option>
+                <option value="Reminder24h">Nhắc lịch trước 24h (Reminder24h)</option>
+                <option value="Reminder2h">Nhắc lịch trước 2h (Reminder2h)</option>
+                <option value="WinBackPromo">Ưu đãi khách Nguy cơ (WinBackPromo)</option>
+            </select>
+            <select id="notifFilterSegment" onchange="loadRfmNotificationLogs()" class="glass-input rounded-xl px-3 py-2 text-white bg-slate-900 border border-white/10">
+                <option value="ALL">👥 Tất cả phân khúc lúc gửi</option>
+                <option value="VIP">VIP</option>
+                <option value="Loyal">Loyal (Thân thiết)</option>
+                <option value="New">New (Khách mới)</option>
+                <option value="AtRisk">AtRisk (Nguy cơ rời bỏ)</option>
+                <option value="NoShowRisk">Có cờ Cảnh báo bỏ hẹn</option>
+            </select>
+        </div>
+        <button type="button" onclick="loadRfmNotificationLogs()" class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5">
+            <i class="fa-solid fa-arrows-rotate"></i> Làm mới danh sách
+        </button>
+    </div>
+
+    <!-- Notification Logs Table -->
+    <div class="glass-card rounded-2xl border border-white/10 overflow-hidden shadow-2xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-slate-400 border-b border-white/10 bg-white/[0.03] uppercase text-[11px]">
+                        <th class="p-3.5 font-semibold">Thời gian gửi</th>
+                        <th class="p-3.5 font-semibold">Khách hàng & SĐT ZNS</th>
+                        <th class="p-3.5 font-semibold text-center">Kênh & MsgID</th>
+                        <th class="p-3.5 font-semibold text-center">Phân khúc lúc gửi</th>
+                        <th class="p-3.5 font-semibold">Nội dung & JSON Payload</th>
+                        <th class="p-3.5 font-semibold text-center">Trạng thái phản hồi</th>
+                        <th class="p-3.5 font-semibold text-right">Demo Webhook Zalo & 1-Click</th>
+                    </tr>
+                </thead>
+                <tbody id="rfmNotificationLogsBody" class="divide-y divide-white/5 text-slate-200">
+                    <tr>
+                        <td colspan="7" class="p-8 text-center text-slate-400">
+                            <i class="fa-solid fa-circle-notch fa-spin text-cyan-400 mr-2"></i> Đang tải nhật ký gửi tin nhắc lịch...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL XEM CHI TIẾT JSON PAYLOAD ZALO ZNS / SMS / EMAIL -->
+<div id="zaloPayloadViewerModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+    <div class="glass-card rounded-2xl p-6 border border-blue-500/30 w-full max-w-2xl text-white shadow-2xl relative transform scale-95 transition-transform duration-300 max-h-[90vh] overflow-y-auto">
+        <button type="button" onclick="closeModal('zaloPayloadViewerModal')" class="absolute top-5 right-5 text-slate-400 hover:text-white transition">
+            <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+        <div class="mb-4 border-b border-white/10 pb-3">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-code text-blue-400"></i>
+                <span>Chi Tiết Bản Tin & JSON Payload Đã Đóng Gói (Zalo ZNS API)</span>
+            </h3>
+            <p id="zaloPayloadModalSubtitle" class="text-xs text-slate-400 mt-1">POST https://business.openapi.zalo.me/message/template</p>
+        </div>
+        <div class="space-y-3 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div class="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <span class="text-slate-400 block text-[10px]">Kênh gửi</span>
+                    <strong id="zaloPayloadChannel" class="text-blue-300 font-bold">ZaloOA</strong>
+                </div>
+                <div class="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <span class="text-slate-400 block text-[10px]">External Message ID (msg_id)</span>
+                    <strong id="zaloPayloadMsgId" class="text-emerald-300 font-mono">---</strong>
+                </div>
+                <div class="p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <span class="text-slate-400 block text-[10px]">Chuẩn SĐT Quốc tế ZNS</span>
+                    <strong id="zaloPayloadPhone" class="text-cyan-300 font-mono">84xxxxxxxxx</strong>
+                </div>
+            </div>
+            <div id="zaloPayloadErrorBox" class="hidden p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300"></div>
+            <div>
+                <label class="block text-slate-300 font-semibold mb-1.5">JSON Payload chuẩn gửi tới Zalo ZNS Server:</label>
+                <pre id="zaloPayloadJsonPre" class="p-4 rounded-xl bg-slate-950 border border-blue-500/30 text-cyan-300 font-mono text-[11px] overflow-x-auto leading-relaxed"></pre>
+            </div>
+        </div>
+        <div class="pt-4 mt-4 border-t border-white/10 flex items-center justify-end gap-2">
+            <button type="button" onclick="closeModal('zaloPayloadViewerModal')" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-semibold transition">
+                Đóng
+            </button>
+        </div>
+    </div>
+</div>
+
 
 @section Scripts {
     <script>
@@ -1620,6 +2014,8 @@
             const titles = {
                 dashboardView: 'Tổng quan ✨',
                 customersView: 'Quản lý Khách hàng 👥',
+                rfmSegmentationView: 'Phân khúc Khách hàng RFM 🎯',
+                rfmNotificationsView: 'Nhật ký Nhắc lịch & 1-Click 🔔',
                 appointmentsView: 'Lịch hẹn Salon 📅',
                 servicesView: 'Danh mục Dịch vụ 💆‍♀️',
                 customerCareView: 'Chăm sóc khách hàng & Marketing 🤖',
@@ -1633,6 +2029,10 @@
             // If switching to customers view, refresh from DB
             if (viewId === 'customersView') {
                 loadCustomersFromDb();
+            } else if (viewId === 'rfmSegmentationView') {
+                loadRfmDashboard();
+            } else if (viewId === 'rfmNotificationsView') {
+                loadRfmNotificationLogs();
             } else if (viewId === 'servicesView') {
                 loadServicesToDropdown();
             } else if (viewId === 'customerCareView') {
@@ -1686,6 +2086,8 @@
                         document.getElementById('countVip').innerText = result.counts.vip.toLocaleString();
                         document.getElementById('countLoyal').innerText = result.counts.loyal.toLocaleString();
                         document.getElementById('countNew').innerText = result.counts.newCount.toLocaleString();
+                        const countAtRiskEl = document.getElementById('countAtRisk');
+                        if (countAtRiskEl) countAtRiskEl.innerText = (result.counts.atRisk || 0).toLocaleString();
 
                         // Also sync to Dashboard top metric
                         const dashMetric = document.getElementById('dashTotalCustomers');
@@ -1733,17 +2135,26 @@
             }
 
             tbody.innerHTML = '';
+            window.customersMap = window.customersMap || {};
             data.forEach(c => {
+                window.customersMap[c.id] = c;
                 const initialLetter = c.name ? c.name.trim().charAt(0).toUpperCase() : 'K';
                 
-                // Color badges matching the user design
+                // Color badges matching SegmentGroup & NoShowRisk
                 let badgeHtml = '';
-                if (c.tier === 'VIP') {
+                const seg = c.rfmSegment || c.tier || 'New';
+                if (seg === 'VIP' || c.tier === 'VIP') {
                     badgeHtml = '<span class="px-3 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 tracking-wider">VIP</span>';
-                } else if (c.tier === 'Than_thiet' || c.tier === 'LOYAL') {
+                } else if (seg === 'AtRisk' || c.tier === 'AtRisk') {
+                    badgeHtml = '<span class="px-3 py-1 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40 tracking-wider">AT-RISK</span>';
+                } else if (seg === 'Loyal' || c.tier === 'Than_thiet' || c.tier === 'LOYAL') {
                     badgeHtml = '<span class="px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 tracking-wider">LOYAL</span>';
                 } else {
                     badgeHtml = '<span class="px-3 py-1 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 tracking-wider">NEW</span>';
+                }
+
+                if (c.isNoShowRisk) {
+                    badgeHtml += ` <span title="Cảnh báo khách hay bỏ hẹn (${c.noShowCount || 0} lần)" class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 ml-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Bỏ hẹn (${c.noShowCount || 0})</span>`;
                 }
 
                 tbody.innerHTML += `
@@ -1752,19 +2163,25 @@
                             <div class="w-8 h-8 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center justify-center font-bold text-xs shrink-0">
                                 ${initialLetter}
                             </div>
-                            <span class="font-medium text-white">${c.name}</span>
+                            <div>
+                                <span class="font-medium text-white block">${c.name}</span>
+                                ${c.rfmReason ? `<span class="text-[10px] text-slate-400 line-clamp-1 max-w-xs" title="${escapeHtml(c.rfmReason)}">${escapeHtml(c.rfmReason)}</span>` : ''}
+                            </div>
                         </td>
                         <td class="p-4 text-slate-300 font-mono text-xs">${c.phone}</td>
                         <td class="p-4 text-slate-400">${c.lastVisit}</td>
                         <td class="p-4 text-slate-300 font-medium">${c.visits} lượt</td>
                         <td class="p-4 font-bold text-white tracking-wide">${c.totalSpend}</td>
-                        <td class="p-4">${badgeHtml}</td>
-                        <td class="p-4 text-right space-x-2">
-                            <button title="Xem hồ sơ chi tiết" onclick="viewCustomerDetail(${c.id})" class="text-purple-400 hover:text-purple-300 p-1.5 rounded-lg hover:bg-white/5 transition">
+                        <td class="p-4 whitespace-nowrap">${badgeHtml}</td>
+                        <td class="p-4 text-right space-x-1.5 whitespace-nowrap">
+                            <button title="Xem hồ sơ chi tiết & Giải thích RFM" onclick="viewCustomerDetail(${c.id})" class="text-purple-400 hover:text-purple-300 p-1.5 rounded-lg hover:bg-white/5 transition">
                                 <i class="fa-solid fa-eye text-sm"></i>
                             </button>
-                            <button title="Gửi thông báo / Nhắc nhở" onclick="showToast('Đang mở cổng gửi tin tới khách hàng ${c.name}!')" class="text-pink-400 hover:text-pink-300 p-1.5 rounded-lg hover:bg-white/5 transition">
+                            <button title="Gửi thông báo / Nhắc nhở" onclick="showToast('Đang mở cổng gửi tin tới khách hàng ' + '${c.name}' + '!')" class="text-pink-400 hover:text-pink-300 p-1.5 rounded-lg hover:bg-white/5 transition">
                                 <i class="fa-solid fa-paper-plane text-sm"></i>
+                            </button>
+                            <button title="Xóa khách hàng" onclick="openDeleteCustomerModal(${c.id})" class="text-rose-400 hover:text-rose-300 p-1.5 rounded-lg hover:bg-rose-500/10 transition">
+                                <i class="fa-solid fa-trash-can text-sm"></i>
                             </button>
                         </td>
                     </tr>
@@ -1780,7 +2197,8 @@
                 'ALL': 'filterAllBtn',
                 'VIP': 'filterVipBtn',
                 'Than_thiet': 'filterLoyalBtn',
-                'Moi': 'filterNewBtn'
+                'Moi': 'filterNewBtn',
+                'AtRisk': 'filterAtRiskBtn'
             };
 
             document.querySelectorAll('#customerFilterButtons button').forEach(b => {
@@ -1804,14 +2222,133 @@
         }
 
         // =========================================================================
-        // MODAL TẠO KHÁCH HÀNG MỚI (BACKEND POST /Customers/Create)
+        // MODAL TẠO KHÁCH HÀNG MỚI & IMPORT FILE (.XLSX / .CSV)
         // =========================================================================
-        function openAddCustomerModal() {
+        function openAddCustomerModal(defaultTab = 'manual') {
             const form = document.getElementById('createCustomerForm');
             if (form) form.reset();
+            const importForm = document.getElementById('importCustomerFileForm');
+            if (importForm) importForm.reset();
+
             const errBox = document.getElementById('customerFormError');
             if (errBox) errBox.classList.add('hidden');
+            const resBox = document.getElementById('importResultBox');
+            if (resBox) resBox.classList.add('hidden');
+            const fileNameEl = document.getElementById('selectedImportFileName');
+            if (fileNameEl) fileNameEl.innerText = 'Chưa có file nào được chọn (Hỗ trợ Excel .xlsx và .csv chuẩn UTF-8)';
+
+            switchAddCustomerTab(defaultTab);
             openModal('addCustomerModal');
+        }
+
+        function switchAddCustomerTab(tab) {
+            const tabManual = document.getElementById('addCustTabManual');
+            const tabImport = document.getElementById('addCustTabImport');
+            const btnManual = document.getElementById('tabBtnManualCust');
+            const btnImport = document.getElementById('tabBtnImportCust');
+            const errBox = document.getElementById('customerFormError');
+            if (errBox) errBox.classList.add('hidden');
+
+            if (tab === 'import') {
+                if (tabManual) tabManual.classList.add('hidden');
+                if (tabImport) tabImport.classList.remove('hidden');
+                if (btnImport) btnImport.className = "px-3.5 py-2 rounded-lg font-semibold bg-emerald-600 text-white shadow-md transition flex items-center gap-1.5";
+                if (btnManual) btnManual.className = "px-3.5 py-2 rounded-lg font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5";
+            } else {
+                if (tabManual) tabManual.classList.remove('hidden');
+                if (tabImport) tabImport.classList.add('hidden');
+                if (btnManual) btnManual.className = "px-3.5 py-2 rounded-lg font-semibold bg-purple-600 text-white shadow-md transition flex items-center gap-1.5";
+                if (btnImport) btnImport.className = "px-3.5 py-2 rounded-lg font-semibold text-slate-300 hover:text-white transition flex items-center gap-1.5";
+            }
+        }
+
+        function downloadCustomerTemplate(format = 'xlsx') {
+            showToast(`Đang tải xuống file mẫu chuẩn (.${format})...`, 'Tải File Mẫu');
+            window.location.href = `/Customers/DownloadTemplate?format=${encodeURIComponent(format)}`;
+        }
+
+        function handleCustomerFileSelect(input) {
+            const fileNameEl = document.getElementById('selectedImportFileName');
+            const errBox = document.getElementById('customerFormError');
+            if (errBox) errBox.classList.add('hidden');
+
+            if (input.files && input.files.length > 0) {
+                const f = input.files[0];
+                const sizeKb = (f.size / 1024).toFixed(1);
+                if (fileNameEl) {
+                    fileNameEl.innerHTML = `<span class="text-emerald-400 font-semibold"><i class="fa-solid fa-file-circle-check mr-1"></i>Đã chọn: ${escapeHtml(f.name)} (${sizeKb} KB)</span>`;
+                }
+            } else if (fileNameEl) {
+                fileNameEl.innerText = 'Chưa có file nào được chọn (Hỗ trợ Excel .xlsx và .csv chuẩn UTF-8)';
+            }
+        }
+
+        async function handleImportCustomersSubmit(e) {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('customerImportFileInput');
+            const errBox = document.getElementById('customerFormError');
+            const errMsg = document.getElementById('customerFormErrorMsg');
+            const resBox = document.getElementById('importResultBox');
+            const resDetail = document.getElementById('importResultDetail');
+            const spinner = document.getElementById('uploadCustomerSpinner');
+            const icon = document.getElementById('uploadCustomerIcon');
+            const btnText = document.getElementById('uploadCustomerText');
+            const submitBtn = document.getElementById('uploadCustomerFileBtn');
+
+            if (errBox) errBox.classList.add('hidden');
+            if (resBox) resBox.classList.add('hidden');
+
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                if (errMsg) errMsg.innerText = 'Vui lòng chọn một file .xlsx hoặc .csv từ máy tính trước khi bấm Tải lên!';
+                if (errBox) errBox.classList.remove('hidden');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            submitBtn.disabled = true;
+            spinner.classList.remove('hidden');
+            icon.classList.add('hidden');
+            btnText.innerText = 'Đang đọc file & lưu vào SQL...';
+
+            try {
+                const response = await fetch('/Customers/ImportFromFile', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast(result.message, 'Nhập dữ liệu thành công!');
+                    if (resBox && resDetail) {
+                        const s = result.summary || {};
+                        resDetail.innerHTML = `
+                            • Tổng số dòng đọc từ file: <strong>${s.totalRows || 0} dòng</strong><br/>
+                            • Khách hàng thêm mới vào SQL: <strong class="text-emerald-300">${s.newCustomersCount || 0} khách</strong> | Cập nhật khách cũ: <strong class="text-purple-300">${s.updatedCustomersCount || 0} khách</strong><br/>
+                            • Lịch sử dịch vụ ghi nhận: <strong class="text-emerald-300">${s.completedCount || 0} Hoàn thành</strong> &bull; <strong class="text-rose-300">${s.noShowCount || 0} Bỏ hẹn</strong>
+                        `;
+                        resBox.classList.remove('hidden');
+                    }
+
+                    // Tự động làm mới danh sách khách hàng ngay lập tức
+                    loadCustomersFromDb();
+                } else {
+                    if (errMsg) errMsg.innerText = result.message || 'Không thể nhập dữ liệu từ file.';
+                    if (errBox) errBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error('Lỗi khi upload file khách hàng:', err);
+                if (errMsg) errMsg.innerText = 'Lỗi kết nối máy chủ khi tải file lên!';
+                if (errBox) errBox.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                spinner.classList.add('hidden');
+                icon.classList.remove('hidden');
+                btnText.innerText = 'Tải lên & Lưu vào SQL';
+            }
         }
 
         async function handleCreateCustomerSubmit(e) {
@@ -1926,6 +2463,8 @@
 
                 if (res.success) {
                     const c = res.data;
+                    window.customersMap = window.customersMap || {};
+                    window.customersMap[c.id] = c;
                     const initial = c.name ? c.name.charAt(0).toUpperCase() : 'K';
                     currentCustomerServiceHistory = c.serviceHistory || [];
                     currentCustomerHistoryFilter = 'ALL';
@@ -1933,6 +2472,12 @@
                     const totalHistCount = currentCustomerServiceHistory.length;
                     const completedCount = c.completedCount || 0;
                     const cancelledCount = c.cancelledCount || 0;
+                    const rfm = c.rfm || {};
+                    const rfmSegment = rfm.segmentGroup || c.tier || 'New';
+                    const isNoShowRisk = Boolean(rfm.isNoShowRisk);
+                    const noShowBadgeHtml = isNoShowRisk
+                        ? `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Cảnh báo bỏ hẹn (${rfm.noShowCount || 0} lần)</span>`
+                        : '';
 
                     modalContent.innerHTML = `
                         <div class="flex items-center justify-between border-b border-white/10 pb-4">
@@ -1941,18 +2486,58 @@
                                     ${initial}
                                 </div>
                                 <div>
-                                    <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                                    <h3 class="text-lg font-bold text-white flex items-center flex-wrap gap-2">
                                         <span>${c.name}</span>
-                                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">${c.tier}</span>
+                                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">${rfmSegment}</span>
+                                        ${noShowBadgeHtml}
                                     </h3>
                                     <p class="text-xs text-slate-300 mt-0.5"><i class="fa-solid fa-phone text-[10px] text-purple-400"></i> ${c.phone} • <i class="fa-solid fa-venus-mars text-[10px] text-pink-400"></i> ${c.gender}</p>
                                 </div>
                             </div>
-                            <button type="button" onclick="openEditCustomerModal(${c.id})" title="Chỉnh sửa thông tin" 
-                                class="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold flex items-center space-x-1.5 transition">
-                                <i class="fa-solid fa-pen-to-square text-xs"></i>
-                                <span class="hidden sm:inline">Chỉnh sửa</span>
-                            </button>
+                            <div class="flex items-center space-x-2">
+                                <button type="button" onclick="openEditCustomerModal(${c.id})" title="Chỉnh sửa thông tin" 
+                                    class="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold flex items-center space-x-1.5 transition">
+                                    <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    <span class="hidden sm:inline">Chỉnh sửa</span>
+                                </button>
+                                <button type="button" onclick="closeModal('customerProfileModal'); openDeleteCustomerModal(${c.id})" title="Xóa khách hàng này" 
+                                    class="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center space-x-1.5 transition">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                    <span class="hidden sm:inline">Xóa</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- KHUNG GIẢI THÍCH PHÂN KHÚC RFM (EXPLAINABILITY) -->
+                        <div class="p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-pink-950/30 border border-pink-500/30 space-y-2.5 text-xs">
+                            <div class="flex items-center justify-between">
+                                <h4 class="font-bold text-pink-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Giải thích Phân khúc RFM (Explainability)
+                                </h4>
+                                <span class="text-[10px] text-slate-400">Cập nhật: ${rfm.lastCalculatedAt || 'Tự động'}</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2 text-center">
+                                <div class="p-2 rounded-xl bg-white/5 border border-white/10">
+                                    <span class="text-[10px] text-slate-400 block">Recency (R)</span>
+                                    <strong class="text-sm font-bold text-cyan-300">${rfm.recencyDays === 999 ? 'Chưa đến' : (rfm.recencyDays ?? 0) + ' ngày'}</strong>
+                                </div>
+                                <div class="p-2 rounded-xl bg-white/5 border border-white/10">
+                                    <span class="text-[10px] text-slate-400 block">Frequency (F)</span>
+                                    <strong class="text-sm font-bold text-purple-300">${rfm.frequencyCount ?? completedCount} lần</strong>
+                                </div>
+                                <div class="p-2 rounded-xl bg-white/5 border border-white/10">
+                                    <span class="text-[10px] text-slate-400 block">Monetary (M)</span>
+                                    <strong class="text-sm font-bold text-emerald-300">${rfm.formattedMonetary || c.totalSpend}</strong>
+                                </div>
+                                <div class="p-2 rounded-xl bg-white/5 border border-white/10">
+                                    <span class="text-[10px] text-slate-400 block">Bỏ hẹn (NoShow)</span>
+                                    <strong class="text-sm font-bold ${isNoShowRisk ? 'text-rose-400' : 'text-slate-300'}">${rfm.noShowCount ?? 0} lần</strong>
+                                </div>
+                            </div>
+                            <div class="p-2.5 rounded-xl bg-slate-950/60 border border-white/10 text-slate-200 leading-relaxed">
+                                <i class="fa-solid fa-circle-info text-pink-400 mr-1.5"></i>
+                                <span>${escapeHtml(rfm.reasonText || 'Hệ thống tự động đánh giá dựa trên lịch sử giao dịch Completed và ngưỡng SystemConfigs.')}</span>
+                            </div>
                         </div>
 
                         <div class="grid grid-cols-2 gap-3 text-xs">
@@ -2019,17 +2604,24 @@
                             </div>
                         </div>
 
-                        <!-- Footer chứa nút Đóng và nút Chỉnh sửa -->
+                        <!-- Footer chứa nút Đóng, Xóa và Chỉnh sửa -->
                         <div class="pt-4 border-t border-white/10 flex items-center justify-between">
-                            <button type="button" onclick="closeModal('customerProfileModal')" 
-                                class="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-semibold text-xs transition">
-                                Đóng
+                            <button type="button" onclick="closeModal('customerProfileModal'); openDeleteCustomerModal(${c.id})" 
+                                class="px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 font-semibold text-xs flex items-center space-x-1.5 transition">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                                <span>Xóa khách hàng</span>
                             </button>
-                            <button type="button" onclick="openEditCustomerModal(${c.id})" 
-                                class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center space-x-2 transition">
-                                <i class="fa-solid fa-pen-to-square"></i>
-                                <span>Chỉnh sửa hồ sơ</span>
-                            </button>
+                            <div class="flex items-center space-x-2">
+                                <button type="button" onclick="closeModal('customerProfileModal')" 
+                                    class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-semibold text-xs transition">
+                                    Đóng
+                                </button>
+                                <button type="button" onclick="openEditCustomerModal(${c.id})" 
+                                    class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center space-x-2 transition">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                    <span>Chỉnh sửa hồ sơ</span>
+                                </button>
+                            </div>
                         </div>
                     `;
 
@@ -2268,6 +2860,70 @@
                 icon.classList.remove('hidden');
                 btnText.innerText = 'Lưu thay đổi';
                 submitBtn.disabled = false;
+            }
+        }
+
+        // =========================================================================
+        // XÓA KHÁCH HÀNG (POST /Customers/Delete)
+        // =========================================================================
+        function openDeleteCustomerModal(id) {
+            const c = (window.customersMap && window.customersMap[id]) || null;
+            document.getElementById('deleteCustomerId').value = id;
+            document.getElementById('deleteCustomerName').innerText = c ? c.name : `Khách hàng #${id}`;
+            document.getElementById('deleteCustomerPhone').innerText = c ? c.phone : '';
+            const noticeEl = document.getElementById('deleteCustomerApptNotice');
+            if (noticeEl) {
+                const visits = c ? (c.visits || 0) : 0;
+                if (visits > 0) {
+                    noticeEl.innerHTML = `<i class="fa-solid fa-calendar-days mr-1 text-amber-400"></i> Khách hàng này có <strong>${visits} lượt dịch vụ / lịch hẹn</strong> trong hệ thống.`;
+                } else {
+                    noticeEl.innerHTML = `<i class="fa-solid fa-info-circle mr-1 text-slate-400"></i> Khách hàng chưa phát sinh lượt lịch hẹn nào.`;
+                }
+            }
+            openModal('deleteCustomerModal');
+        }
+
+        async function handleDeleteCustomerSubmit() {
+            const id = document.getElementById('deleteCustomerId').value;
+            if (!id || id <= 0) return;
+
+            const submitBtn = document.getElementById('confirmDeleteCustomerBtn');
+            const spinner = document.getElementById('deleteCustomerSpinner');
+            const icon = document.getElementById('deleteCustomerIcon');
+            const btnText = document.getElementById('deleteCustomerBtnText');
+
+            submitBtn.disabled = true;
+            spinner.classList.remove('hidden');
+            icon.classList.add('hidden');
+            btnText.innerText = 'Đang xóa...';
+
+            try {
+                const response = await fetch('/Customers/Delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ customerId: parseInt(id) })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    closeModal('deleteCustomerModal');
+                    showToast(result.message, 'Xóa thành công!');
+                    // Tải lại danh sách khách hàng từ SQL Server
+                    loadCustomersFromDb();
+                } else {
+                    showToast(result.message || 'Không thể xóa khách hàng.', 'Lỗi!', 'error');
+                }
+            } catch (err) {
+                console.error('Lỗi khi xóa khách hàng:', err);
+                showToast('Lỗi kết nối máy chủ khi xóa khách hàng!', 'Lỗi mạng', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                spinner.classList.add('hidden');
+                icon.classList.remove('hidden');
+                btnText.innerText = 'Xác nhận xóa';
             }
         }
 
@@ -4376,8 +5032,10 @@
         function renderGatewayStatus(gw) {
             const emailPill = document.getElementById('ccEmailStatusPill');
             const smsPill = document.getElementById('ccSmsStatusPill');
+            const zaloPill = document.getElementById('ccZaloStatusPill');
             const modalEmailBadge = document.getElementById('modalEmailStatusBadge');
             const modalSmsBadge = document.getElementById('modalSmsStatusBadge');
+            const modalZaloBadge = document.getElementById('modalZaloStatusBadge');
             const warningBanner = document.getElementById('ccGatewayWarningBanner');
 
             if (emailPill) {
@@ -4394,6 +5052,16 @@
                     : 'px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-semibold text-[10px]';
             }
 
+            if (zaloPill) {
+                if (gw.isZaloProductionConfigured) {
+                    zaloPill.textContent = 'OA Thật';
+                    zaloPill.className = 'px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-semibold text-[10px]';
+                } else {
+                    zaloPill.textContent = 'Sandbox';
+                    zaloPill.className = 'px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold text-[10px]';
+                }
+            }
+
             if (modalEmailBadge) {
                 modalEmailBadge.textContent = gw.isEmailConfigured ? `Đã kết nối (${gw.username})` : 'Chưa cấu hình';
                 modalEmailBadge.className = gw.isEmailConfigured
@@ -4408,6 +5076,19 @@
                     : 'px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-semibold';
             }
 
+            if (modalZaloBadge) {
+                if (gw.isZaloProductionConfigured) {
+                    modalZaloBadge.textContent = 'Production OA (Thật)';
+                    modalZaloBadge.className = 'px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 font-semibold';
+                } else if (gw.zaloUseSandboxMode === false) {
+                    modalZaloBadge.textContent = 'Thiếu Access Token';
+                    modalZaloBadge.className = 'px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 font-semibold';
+                } else {
+                    modalZaloBadge.textContent = 'Chế độ Sandbox';
+                    modalZaloBadge.className = 'px-2 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold';
+                }
+            }
+
             if (warningBanner) {
                 if (!gw.isEmailConfigured || !gw.isSmsConfigured) {
                     warningBanner.classList.remove('hidden');
@@ -4417,7 +5098,41 @@
             }
         }
 
-        function openGatewayConfigModal() {
+        function collectGatewayFormPayload() {
+            return {
+                smtpServer: document.getElementById('cfgSmtpServer')?.value.trim() || 'smtp.gmail.com',
+                smtpPort: parseInt(document.getElementById('cfgSmtpPort')?.value || '587'),
+                senderName: document.getElementById('cfgSenderName')?.value.trim() || 'SalonCare Spa & Beauty',
+                senderEmail: document.getElementById('cfgEmailUsername')?.value.trim() || '',
+                username: document.getElementById('cfgEmailUsername')?.value.trim() || '',
+                password: document.getElementById('cfgEmailPassword')?.value.trim() || '',
+                accountSid: document.getElementById('cfgSmsAccountSid')?.value.trim() || '',
+                authToken: document.getElementById('cfgSmsAuthToken')?.value.trim() || '',
+                fromPhoneNumber: document.getElementById('cfgSmsFromPhone')?.value.trim() || '',
+
+                // Zalo OA / ZNS
+                zaloUseSandboxMode: document.getElementById('cfgZaloSandboxMode')?.value || 'true',
+                zaloAccessToken: document.getElementById('cfgZaloAccessToken')?.value.trim() || '',
+                zaloRefreshToken: document.getElementById('cfgZaloRefreshToken')?.value.trim() || '',
+                zaloAppId: document.getElementById('cfgZaloAppId')?.value.trim() || '',
+                zaloAppSecret: document.getElementById('cfgZaloAppSecret')?.value.trim() || '',
+                zaloReminderTemplateId: document.getElementById('cfgZaloReminderTemplateId')?.value.trim() || '318920',
+                zaloPromoTemplateId: document.getElementById('cfgZaloPromoTemplateId')?.value.trim() || '318925'
+            };
+        }
+
+        async function openGatewayConfigModal() {
+            try {
+                const res = await fetch('/CustomerCare/GetDashboardData');
+                const data = await res.json();
+                if (data.success && data.gateway) {
+                    currentGatewayConfig = data.gateway;
+                    renderGatewayStatus(data.gateway);
+                }
+            } catch (err) {
+                console.warn('Không thể làm mới cấu hình cổng gửi trước khi mở modal:', err);
+            }
+
             const gw = currentGatewayConfig || {};
             document.getElementById('cfgSmtpServer').value = gw.smtpServer || 'smtp.gmail.com';
             document.getElementById('cfgSmtpPort').value = gw.smtpPort || 587;
@@ -4435,6 +5150,22 @@
                 : 'Nhập Auth Token từ Twilio Console';
             document.getElementById('cfgSmsFromPhone').value = gw.fromPhoneNumber || '';
 
+            // Zalo OA / ZNS fields
+            const sbSelect = document.getElementById('cfgZaloSandboxMode');
+            if (sbSelect) sbSelect.value = gw.zaloUseSandboxMode === false ? 'false' : 'true';
+            const accInput = document.getElementById('cfgZaloAccessToken');
+            if (accInput) accInput.value = gw.zaloAccessToken || '';
+            const refInput = document.getElementById('cfgZaloRefreshToken');
+            if (refInput) refInput.value = gw.zaloRefreshToken || '';
+            const appIdInput = document.getElementById('cfgZaloAppId');
+            if (appIdInput) appIdInput.value = gw.zaloAppId || '4289102938471029384';
+            const secretInput = document.getElementById('cfgZaloAppSecret');
+            if (secretInput) secretInput.value = gw.zaloAppSecret || '';
+            const remTplInput = document.getElementById('cfgZaloReminderTemplateId');
+            if (remTplInput) remTplInput.value = gw.zaloReminderTemplateId || '318920';
+            const promoTplInput = document.getElementById('cfgZaloPromoTemplateId');
+            if (promoTplInput) promoTplInput.value = gw.zaloPromoTemplateId || '318925';
+
             const fb = document.getElementById('gatewayConfigFeedback');
             if (fb) fb.classList.add('hidden');
 
@@ -4451,17 +5182,7 @@
             spinner.classList.remove('hidden');
 
             try {
-                const payload = {
-                    smtpServer: document.getElementById('cfgSmtpServer').value.trim(),
-                    smtpPort: parseInt(document.getElementById('cfgSmtpPort').value || '587'),
-                    senderName: document.getElementById('cfgSenderName').value.trim(),
-                    senderEmail: document.getElementById('cfgEmailUsername').value.trim(),
-                    username: document.getElementById('cfgEmailUsername').value.trim(),
-                    password: document.getElementById('cfgEmailPassword').value.trim(),
-                    accountSid: document.getElementById('cfgSmsAccountSid').value.trim(),
-                    authToken: document.getElementById('cfgSmsAuthToken').value.trim(),
-                    fromPhoneNumber: document.getElementById('cfgSmsFromPhone').value.trim()
-                };
+                const payload = collectGatewayFormPayload();
 
                 const res = await fetch('/CustomerCare/SaveGatewayConfig', {
                     method: 'POST',
@@ -4481,6 +5202,9 @@
                 if (result.success) {
                     showToast(result.message, 'Đã lưu cấu hình');
                     await loadCustomerCareDashboard();
+                    if (typeof loadRfmDashboard === 'function') {
+                        loadRfmDashboard();
+                    }
                 }
             } catch (err) {
                 showToast('Lỗi kết nối máy chủ khi lưu cấu hình!', 'Lỗi');
@@ -4492,17 +5216,7 @@
 
         async function handleTestGateway(channel) {
             // Lưu cấu hình hiện tại trên form trước khi gửi thử để đảm bảo thông tin mới nhất được áp dụng
-            const savePayload = {
-                smtpServer: document.getElementById('cfgSmtpServer').value.trim(),
-                smtpPort: parseInt(document.getElementById('cfgSmtpPort').value || '587'),
-                senderName: document.getElementById('cfgSenderName').value.trim(),
-                senderEmail: document.getElementById('cfgEmailUsername').value.trim(),
-                username: document.getElementById('cfgEmailUsername').value.trim(),
-                password: document.getElementById('cfgEmailPassword').value.trim(),
-                accountSid: document.getElementById('cfgSmsAccountSid').value.trim(),
-                authToken: document.getElementById('cfgSmsAuthToken').value.trim(),
-                fromPhoneNumber: document.getElementById('cfgSmsFromPhone').value.trim()
-            };
+            const savePayload = collectGatewayFormPayload();
 
             await fetch('/CustomerCare/SaveGatewayConfig', {
                 method: 'POST',
@@ -4512,7 +5226,7 @@
 
             const recipientInput = channel === 'EMAIL'
                 ? document.getElementById('testEmailRecipient')
-                : document.getElementById('testSmsRecipient');
+                : (channel === 'ZALO' ? document.getElementById('testZaloRecipient') : document.getElementById('testSmsRecipient'));
 
             const recipient = recipientInput?.value.trim() || '';
             if (!recipient) {
@@ -4521,7 +5235,8 @@
                 return;
             }
 
-            const btn = document.getElementById(channel === 'EMAIL' ? 'btnTestEmail' : 'btnTestSms');
+            const btnId = channel === 'EMAIL' ? 'btnTestEmail' : (channel === 'ZALO' ? 'btnTestZalo' : 'btnTestSms');
+            const btn = document.getElementById(btnId);
             const fb = document.getElementById('gatewayConfigFeedback');
             const origHtml = btn.innerHTML;
             btn.disabled = true;
@@ -4545,6 +5260,9 @@
 
                 showToast(result.message, result.success ? 'Gửi thành công' : 'Gửi thất bại');
                 await loadCustomerCareDashboard();
+                if (typeof loadRfmNotificationLogs === 'function') {
+                    loadRfmNotificationLogs();
+                }
             } catch (err) {
                 showToast('Lỗi kết nối máy chủ khi gửi thử!', 'Lỗi');
             } finally {
@@ -4640,10 +5358,12 @@
             }
 
             tbody.innerHTML = interactions.map(item => {
-                const isEmail = (item.channel || '').toUpperCase() === 'EMAIL';
-                const channelBadge = isEmail
-                    ? '<span class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-semibold text-[10px]"><i class="fa-solid fa-envelope mr-1"></i>EMAIL</span>'
-                    : '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 font-semibold text-[10px]"><i class="fa-solid fa-comment-sms mr-1"></i>SMS</span>';
+                const ch = (item.channel || '').toUpperCase();
+                const channelBadge = ch === 'EMAIL'
+                    ? '<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold text-[10px]"><i class="fa-solid fa-envelope mr-1"></i>EMAIL</span>'
+                    : (ch === 'ZALO' || ch === 'ZALOOA'
+                        ? '<span class="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold text-[10px]"><i class="fa-solid fa-paper-plane mr-1"></i>ZALO ZNS</span>'
+                        : '<span class="px-2 py-0.5 rounded bg-pink-500/20 text-pink-300 font-semibold text-[10px]"><i class="fa-solid fa-comment-sms mr-1"></i>SMS</span>');
 
                 const isSuccess = (item.status || '').toUpperCase() === 'SUCCESS';
                 const statusBadge = isSuccess
@@ -5943,6 +6663,520 @@
             showToast('Đang trích xuất Nhật ký hệ thống ra file CSV...', 'Xuất Nhật Ký');
             window.location.href = `/AuditLog/ExportCsv?${params.toString()}`;
         }
+
+        // =========================================================================
+        // PHÂN HỆ MUST #2: PHÂN KHÚC KHÁCH HÀNG RFM & NHẮC LỊCH TỰ ĐỘNG 1-CLICK
+        // =========================================================================
+        let currentRfmSegmentFilter = 'ALL';
+        let rfmSearchTimer = null;
+
+        function switchRfmSubTab(subTab) {
+            const tabOverview = document.getElementById('rfmSubTabOverview');
+            const tabConfig = document.getElementById('rfmSubTabConfig');
+            const btnOverview = document.getElementById('rfmTabBtnOverview');
+            const btnConfig = document.getElementById('rfmTabBtnConfig');
+
+            if (subTab === 'config' && tabConfig) {
+                tabOverview?.classList.add('hidden');
+                tabConfig.classList.remove('hidden');
+                if (btnConfig) btnConfig.className = "px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/30 transition flex items-center gap-2";
+                if (btnOverview) btnOverview.className = "px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition flex items-center gap-2";
+            } else {
+                tabOverview?.classList.remove('hidden');
+                tabConfig?.classList.add('hidden');
+                if (btnOverview) btnOverview.className = "px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white shadow-lg shadow-purple-600/30 transition flex items-center gap-2";
+                if (btnConfig) btnConfig.className = "px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition flex items-center gap-2";
+            }
+        }
+
+        function debounceLoadRfmDashboard() {
+            clearTimeout(rfmSearchTimer);
+            rfmSearchTimer = setTimeout(() => {
+                loadRfmDashboard();
+            }, 300);
+        }
+
+        function filterRfmSegmentTable(segment) {
+            currentRfmSegmentFilter = segment;
+            const labels = {
+                'ALL': 'Tất cả phân khúc',
+                'VIP': 'Nhóm VIP (Chi tiêu cao / Tần suất cao)',
+                'Loyal': 'Nhóm Thân thiết (Loyal)',
+                'New': 'Nhóm Khách mới / Vãng lai (New)',
+                'AtRisk': 'Nhóm Nguy cơ rời bỏ (At-Risk)',
+                'NoShowRisk': 'Nhóm Cảnh báo hay bỏ hẹn (IsNoShowRisk = true)'
+            };
+            const labelEl = document.getElementById('rfmCurrentFilterLabel');
+            if (labelEl) labelEl.innerText = 'Đang hiển thị: ' + (labels[segment] || segment);
+
+            document.querySelectorAll('.rfm-kpi-card').forEach(card => {
+                card.classList.remove('ring-2', 'ring-purple-400', 'bg-white/10');
+            });
+            const activeCard = document.getElementById(`rfmCard_${segment}`);
+            if (activeCard) {
+                activeCard.classList.add('ring-2', 'ring-purple-400', 'bg-white/10');
+            }
+
+            loadRfmDashboard();
+        }
+
+        async function loadRfmDashboard() {
+            const tbody = document.getElementById('rfmCustomerTableBody');
+            const searchVal = document.getElementById('rfmSearchInput')?.value.trim() || '';
+
+            try {
+                const res = await fetch(`/Rfm/GetDashboard?segment=${encodeURIComponent(currentRfmSegmentFilter)}&search=${encodeURIComponent(searchVal)}`);
+                const data = await res.json();
+                if (!data.success) return;
+
+                if (data.counts) {
+                    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = (val || 0).toLocaleString(); };
+                    setTxt('rfmCountAll', data.counts.all);
+                    setTxt('rfmCountVip', data.counts.vip);
+                    setTxt('rfmCountLoyal', data.counts.loyal);
+                    setTxt('rfmCountNew', data.counts.newCount);
+                    setTxt('rfmCountAtRisk', data.counts.atRisk);
+                    setTxt('rfmCountNoShowRisk', data.counts.noShowRisk);
+                }
+
+                // Render dynamic SystemConfigs inputs (RFM_* vs Zalo_* & Notification_PreferredChannel)
+                const cfgContainer = document.getElementById('rfmConfigInputsContainer');
+                const zaloContainer = document.getElementById('zaloConfigInputsContainer');
+                if (data.configs) {
+                    const rfmConfigs = data.configs.filter(c => c.configKey.startsWith('RFM_'));
+                    const zaloConfigs = data.configs.filter(c => !c.configKey.startsWith('RFM_'));
+
+                    if (cfgContainer) {
+                        cfgContainer.innerHTML = rfmConfigs.map(cfg => `
+                            <div class="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <label class="font-bold text-amber-300 font-mono text-[11px]">${escapeHtml(cfg.configKey)}</label>
+                                    <span class="text-[10px] text-slate-400">Cập nhật: ${cfg.updatedAt || 'Mặc định'}</span>
+                                </div>
+                                <p class="text-[11px] text-slate-300">${escapeHtml(cfg.description || '')}</p>
+                                <input type="number" step="any" data-config-key="${escapeHtml(cfg.configKey)}" value="${escapeHtml(cfg.configValue)}" required
+                                    class="rfm-config-input w-full glass-input rounded-xl px-3 py-2 text-white font-bold border border-white/10 focus:border-amber-400 outline-none" />
+                            </div>
+                        `).join('');
+                    }
+
+                    if (zaloContainer) {
+                        zaloContainer.innerHTML = zaloConfigs.map(cfg => {
+                            let inputHtml = '';
+                            if (cfg.configKey === 'Notification_PreferredChannel') {
+                                const v = cfg.configValue || 'SmartFallback';
+                                inputHtml = `
+                                    <select data-config-key="${escapeHtml(cfg.configKey)}" class="rfm-config-input w-full glass-input rounded-xl px-3 py-2 text-white font-bold bg-slate-900 border border-blue-500/30 focus:border-blue-400 outline-none">
+                                        <option value="SmartFallback" ${v === 'SmartFallback' ? 'selected' : ''}>SmartFallback (Ưu tiên ZaloOA → Dự phòng SMS → Email)</option>
+                                        <option value="ZaloOA" ${v === 'ZaloOA' ? 'selected' : ''}>ZaloOA (Kênh Zalo ZNS)</option>
+                                        <option value="SMS" ${v === 'SMS' ? 'selected' : ''}>SMS (Twilio / eSMS)</option>
+                                        <option value="Email" ${v === 'Email' ? 'selected' : ''}>Email (SMTP MailKit)</option>
+                                    </select>
+                                `;
+                            } else if (cfg.configKey === 'Zalo_UseSandboxMode') {
+                                const isSbx = String(cfg.configValue).toLowerCase() !== 'false';
+                                inputHtml = `
+                                    <select data-config-key="${escapeHtml(cfg.configKey)}" class="rfm-config-input w-full glass-input rounded-xl px-3 py-2 text-white font-bold bg-slate-900 border border-blue-500/30 focus:border-blue-400 outline-none">
+                                        <option value="true" ${isSbx ? 'selected' : ''}>true (Chế độ Sandbox / Giả lập đóng gói ZNS & 1-Click)</option>
+                                        <option value="false" ${!isSbx ? 'selected' : ''}>false (Chế độ Production gọi REST API Zalo ZNS thật)</option>
+                                    </select>
+                                `;
+                            } else {
+                                inputHtml = `
+                                    <input type="text" data-config-key="${escapeHtml(cfg.configKey)}" value="${escapeHtml(cfg.configValue)}"
+                                        placeholder="Nhập giá trị cấu hình Zalo OA..."
+                                        class="rfm-config-input w-full glass-input rounded-xl px-3 py-2 text-white font-mono border border-blue-500/30 focus:border-blue-400 outline-none" />
+                                `;
+                            }
+
+                            return `
+                                <div class="p-3.5 rounded-xl bg-blue-950/20 border border-blue-500/25 space-y-1.5">
+                                    <div class="flex items-center justify-between">
+                                        <label class="font-bold text-blue-300 font-mono text-[11px]">${escapeHtml(cfg.configKey)}</label>
+                                        <span class="text-[10px] text-slate-400">Cập nhật: ${cfg.updatedAt || 'Mặc định'}</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-300">${escapeHtml(cfg.description || '')}</p>
+                                    ${inputHtml}
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                }
+
+                const items = data.data || [];
+                if (items.length > 0 && document.getElementById('rfmLastCalculatedTime')) {
+                    document.getElementById('rfmLastCalculatedTime').innerText = items[0].lastCalculatedAt;
+                }
+
+                if (!tbody) return;
+                if (items.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="p-8 text-center text-slate-400">
+                                Không có khách hàng nào trong phân khúc này.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = items.map(item => {
+                    let segBadge = '';
+                    if (item.segmentGroup === 'VIP') {
+                        segBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">VIP</span>';
+                    } else if (item.segmentGroup === 'AtRisk') {
+                        segBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40">AT-RISK (Nguy cơ)</span>';
+                    } else if (item.segmentGroup === 'Loyal') {
+                        segBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">LOYAL (Thân thiết)</span>';
+                    } else {
+                        segBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">NEW (Khách mới)</span>';
+                    }
+
+                    const riskFlag = item.isNoShowRisk
+                        ? `<div class="mt-1"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Cảnh báo bỏ hẹn</span></div>`
+                        : '';
+
+                    const rDisplay = item.recencyDays === 999 ? '<span class="text-slate-500">Chưa đến (999)</span>' : `<strong class="text-cyan-300">${item.recencyDays} ngày</strong>`;
+
+                    return `
+                        <tr class="hover:bg-white/[0.04] transition">
+                            <td class="p-3.5">
+                                <div class="font-bold text-white">${escapeHtml(item.fullName)}</div>
+                                <div class="text-[11px] text-slate-400 font-mono">${escapeHtml(item.phone)}</div>
+                            </td>
+                            <td class="p-3.5 text-center">${rDisplay}</td>
+                            <td class="p-3.5 text-center font-bold text-purple-300">${item.frequencyCount} lần</td>
+                            <td class="p-3.5 text-right font-bold text-emerald-400">${item.formattedMonetary}</td>
+                            <td class="p-3.5 text-center">
+                                <span class="px-2 py-0.5 rounded-lg font-bold ${item.isNoShowRisk ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'text-slate-300'}">${item.noShowCount} lần</span>
+                            </td>
+                            <td class="p-3.5 text-center whitespace-nowrap">
+                                ${segBadge}
+                                ${riskFlag}
+                            </td>
+                            <td class="p-3.5 text-slate-200 max-w-md leading-relaxed">
+                                <div class="p-2 rounded-xl bg-white/[0.03] border border-white/5 text-[11px]">
+                                    <i class="fa-solid fa-quote-left text-pink-400/60 mr-1"></i>
+                                    ${escapeHtml(item.reasonText)}
+                                </div>
+                            </td>
+                            <td class="p-3.5 text-right whitespace-nowrap">
+                                <button type="button" onclick="viewCustomerDetail(${item.customerId})" class="px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500 text-purple-300 hover:text-white text-[11px] font-semibold transition">
+                                    <i class="fa-solid fa-eye mr-1"></i> Hồ sơ
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error("Lỗi tải bảng RFM:", err);
+            }
+        }
+
+        async function recalculateRfmNow() {
+            const btn = document.getElementById('btnRecalculateRfm');
+            const icon = document.getElementById('recalcRfmIcon');
+            const txt = document.getElementById('recalcRfmText');
+            if (btn) btn.disabled = true;
+            if (icon) icon.classList.add('fa-spin');
+            if (txt) txt.innerText = 'Đang tính toán RFM...';
+
+            try {
+                const res = await fetch('/Rfm/RecalculateAll', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Phân khúc RFM hoàn tất!');
+                    await loadRfmDashboard();
+                    loadCustomersFromDb();
+                } else {
+                    showToast(data.message || 'Lỗi khi tính lại RFM.', 'Lỗi', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối khi tính lại RFM.', 'Lỗi mạng', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+                if (icon) icon.classList.remove('fa-spin');
+                if (txt) txt.innerText = 'Chạy tính lại RFM ngay';
+            }
+        }
+
+        async function sendWinBackPromoNow() {
+            const btn = document.getElementById('btnSendWinBackPromo');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/Rfm/SendWinBackCampaign', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Chiến dịch Win-Back At-Risk');
+                    loadRfmNotificationLogs();
+                } else {
+                    showToast(data.message || 'Không thể gửi ưu đãi.', 'Thông báo', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối máy chủ.', 'Lỗi', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function saveRfmSystemConfigs(e) {
+            e.preventDefault();
+            const inputs = document.querySelectorAll('.rfm-config-input');
+            const configs = {};
+            inputs.forEach(inp => {
+                const key = inp.getAttribute('data-config-key');
+                if (key) configs[key] = inp.value.trim();
+            });
+
+            const btn = document.getElementById('btnSaveRfmConfigs');
+            if (btn) btn.disabled = true;
+
+            try {
+                const res = await fetch('/Rfm/UpdateConfigs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ configs })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Đã lưu cấu hình SystemConfigs!');
+                    switchRfmSubTab('overview');
+                    await loadRfmDashboard();
+                    loadCustomersFromDb();
+                } else {
+                    showToast(data.message || 'Không thể lưu cấu hình.', 'Lỗi phân quyền', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối khi lưu cấu hình RFM.', 'Lỗi', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        let rfmLogsMap = {};
+
+        async function loadRfmNotificationLogs() {
+            const tbody = document.getElementById('rfmNotificationLogsBody');
+            const msgType = document.getElementById('notifFilterMessageType')?.value || 'ALL';
+            const seg = document.getElementById('notifFilterSegment')?.value || 'ALL';
+            const ch = document.getElementById('notifFilterChannel')?.value || 'ALL';
+
+            try {
+                const res = await fetch(`/Rfm/GetNotificationLogs?messageType=${encodeURIComponent(msgType)}&segment=${encodeURIComponent(seg)}&channel=${encodeURIComponent(ch)}`);
+                const data = await res.json();
+                if (!data.success) return;
+
+                if (data.stats) {
+                    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = (val || 0).toLocaleString(); };
+                    setTxt('notifStatTotal', data.stats.totalSent);
+                    setTxt('notifStat24h', data.stats.reminder24h);
+                    setTxt('notifStat2h', data.stats.reminder2h);
+                    setTxt('notifStatWinBack', data.stats.winBackPromo);
+                    setTxt('notifStatConfirmed', data.stats.confirmedByCustomer);
+                }
+
+                if (!tbody) return;
+                const logs = data.data || [];
+                rfmLogsMap = {};
+                logs.forEach(item => { rfmLogsMap[item.logId] = item; });
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="p-8 text-center text-slate-400">
+                                Chưa có bản ghi nhắc lịch tự động nào khớp bộ lọc. Hãy bấm nút <strong>"Gửi thử mẫu Zalo ZNS ngay"</strong> hoặc <strong>"Quét & Chạy Worker nhắc lịch ngay"</strong> để kiểm thử.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = logs.map(l => {
+                    let statusBadge = '';
+                    if (l.status === 'ConfirmedByCustomer') {
+                        statusBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"><i class="fa-solid fa-circle-check mr-1"></i>Đã xác nhận (Webhook / 1-Click)</span>';
+                    } else if (l.status === 'CanceledByCustomer') {
+                        statusBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"><i class="fa-solid fa-circle-xmark mr-1"></i>Khách báo hủy (Webhook / Link)</span>';
+                    } else if (l.status === 'Sent') {
+                        statusBadge = '<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"><i class="fa-solid fa-paper-plane mr-1"></i>Đã gửi thành công</span>';
+                    } else {
+                        statusBadge = `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${escapeHtml(l.status)}</span>`;
+                    }
+
+                    let channelBadge = '';
+                    if (l.channel === 'ZaloOA') {
+                        channelBadge = '<span class="px-2.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200 font-bold text-[10px] border border-blue-400/40"><i class="fa-solid fa-paper-plane mr-1 text-blue-400"></i>Zalo OA / ZNS</span>';
+                    } else if (l.channel === 'SMS') {
+                        channelBadge = '<span class="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-bold text-[10px] border border-pink-500/40"><i class="fa-solid fa-comment-sms mr-1"></i>SMS (Twilio)</span>';
+                    } else {
+                        channelBadge = `<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] border border-emerald-500/40"><i class="fa-solid fa-envelope mr-1"></i>${escapeHtml(l.channel)}</span>`;
+                    }
+
+                    const payloadBtn = `<button type="button" onclick="openZaloPayloadModal(${l.logId})" class="mt-1.5 px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 text-[10px] font-semibold transition inline-flex items-center gap-1">
+                        <i class="fa-solid fa-code"></i> Xem JSON Payload
+                    </button>`;
+
+                    const canSimulate = l.status !== 'ConfirmedByCustomer';
+                    const actionHtml = canSimulate
+                        ? `<div class="flex flex-col items-end gap-1.5">
+                               <div class="flex items-center gap-1.5">
+                                   <button type="button" onclick="simulateZaloWebhookEvent(${l.logId}, 'CONFIRM')" class="px-2.5 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500 text-blue-200 hover:text-white border border-blue-400/40 text-[11px] font-bold transition" title="Gửi POST /api/webhooks/zalo kèm chữ ký SHA256 X-ZEvent-Signature">
+                                       <i class="fa-solid fa-plug-circle-check mr-1"></i>Giả lập Webhook Zalo (Xác nhận)
+                                   </button>
+                                   ${l.confirmUrl ? `<a href="${l.confirmUrl}" target="_blank" title="Mở trang Public 1-Click (/BookingPublic/Confirm)" class="p-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40"><i class="fa-solid fa-up-right-from-square"></i></a>` : ''}
+                               </div>
+                               <button type="button" onclick="simulateZaloWebhookEvent(${l.logId}, 'CANCEL')" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 text-[10px] font-semibold transition">
+                                   <i class="fa-solid fa-ban mr-1"></i>Giả lập Webhook Báo hủy
+                               </button>
+                           </div>`
+                        : `<div class="flex items-center justify-end gap-1.5">
+                               <span class="text-[11px] text-emerald-400 font-semibold"><i class="fa-solid fa-check-double mr-1"></i>Đã đồng bộ lịch hẹn</span>
+                               ${l.confirmUrl ? `<a href="${l.confirmUrl}" target="_blank" title="Mở trang Public 1-Click" class="p-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-cyan-300 border border-white/10"><i class="fa-solid fa-up-right-from-square"></i></a>` : ''}
+                           </div>`;
+
+                    return `
+                        <tr class="hover:bg-white/[0.04] transition">
+                            <td class="p-3.5 font-mono text-xs text-slate-300 whitespace-nowrap">
+                                <div>${l.sentAt}</div>
+                                ${l.appointmentId ? `<span class="text-[10px] text-purple-300">Lịch hẹn #${l.appointmentId} (${escapeHtml(l.appointmentStatus)})</span>` : ''}
+                            </td>
+                            <td class="p-3.5">
+                                <div class="font-bold text-white">${escapeHtml(l.customerName)}</div>
+                                <div class="text-[11px] text-slate-400 font-mono">SĐT: ${escapeHtml(l.customerPhone)} → ZNS: <span class="text-cyan-300">${escapeHtml(l.zaloPhone || '')}</span></div>
+                                ${l.zaloUserId ? `<div class="text-[10px] text-blue-300 font-mono">ZaloUID: ${escapeHtml(l.zaloUserId)}</div>` : ''}
+                            </td>
+                            <td class="p-3.5 text-center whitespace-nowrap">
+                                ${channelBadge}
+                                <div class="text-[11px] text-purple-300 font-semibold mt-1">${escapeHtml(l.messageType)}</div>
+                                ${l.externalMessageId ? `<div class="text-[10px] text-slate-400 font-mono mt-0.5">msg_id: ${escapeHtml(l.externalMessageId)}</div>` : ''}
+                            </td>
+                            <td class="p-3.5 text-center whitespace-nowrap">
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">${escapeHtml(l.segmentAtSendTime)}</span>
+                            </td>
+                            <td class="p-3.5 text-slate-200 max-w-md leading-relaxed">
+                                <div class="p-2 rounded-xl bg-white/[0.03] border border-white/5 text-[11px]">
+                                    ${escapeHtml(l.content)}
+                                </div>
+                                ${payloadBtn}
+                            </td>
+                            <td class="p-3.5 text-center whitespace-nowrap">${statusBadge}</td>
+                            <td class="p-3.5 text-right whitespace-nowrap">${actionHtml}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error("Lỗi tải nhật ký nhắc lịch:", err);
+            }
+        }
+
+        function openZaloPayloadModal(logId) {
+            const log = rfmLogsMap[logId];
+            if (!log) return;
+
+            const chEl = document.getElementById('zaloPayloadChannel');
+            const msgIdEl = document.getElementById('zaloPayloadMsgId');
+            const phoneEl = document.getElementById('zaloPayloadPhone');
+            const preEl = document.getElementById('zaloPayloadJsonPre');
+            const errBox = document.getElementById('zaloPayloadErrorBox');
+
+            if (chEl) chEl.innerText = log.channel || 'ZaloOA';
+            if (msgIdEl) msgIdEl.innerText = log.externalMessageId || 'N/A';
+            if (phoneEl) phoneEl.innerText = log.zaloPhone || log.customerPhone || '---';
+
+            if (errBox) {
+                if (log.errorMessage) {
+                    errBox.innerText = 'Chi tiết lỗi: ' + log.errorMessage;
+                    errBox.classList.remove('hidden');
+                } else {
+                    errBox.classList.add('hidden');
+                }
+            }
+
+            if (preEl) {
+                preEl.textContent = log.payloadJson || JSON.stringify({
+                    phone: log.zaloPhone,
+                    channel: log.channel,
+                    message_type: log.messageType,
+                    content: log.content
+                }, null, 2);
+            }
+
+            openModal('zaloPayloadViewerModal');
+        }
+
+        async function sendDemoZaloZnsNow() {
+            try {
+                const res = await fetch('/Rfm/SendDemoZnsReminder', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Zalo OA / ZNS Sandbox');
+                    await loadRfmNotificationLogs();
+                } else {
+                    showToast(data.message || 'Không thể gửi thử Zalo ZNS.', 'Thông báo', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối máy chủ.', 'Lỗi', 'error');
+            }
+        }
+
+        async function simulateZaloWebhookEvent(logId, actionType = 'CONFIRM') {
+            try {
+                const res = await fetch(`/api/webhooks/zalo/simulate?logId=${logId}&actionType=${encodeURIComponent(actionType)}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Webhook Zalo OA (SHA256 Verified)');
+                    await loadRfmNotificationLogs();
+                    if (typeof loadAppointmentsKanban === 'function') loadAppointmentsKanban();
+                } else {
+                    showToast(data.message || 'Không thể giả lập Webhook Zalo.', 'Lỗi', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối khi giả lập Webhook Zalo.', 'Lỗi', 'error');
+            }
+        }
+
+        async function triggerRemindersNow() {
+            try {
+                const res = await fetch('/Rfm/TriggerRemindersNow', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Background Worker Nhắc Lịch');
+                    await loadRfmNotificationLogs();
+                } else {
+                    showToast(data.message || 'Lỗi khi chạy quét nhắc lịch.', 'Lỗi', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối máy chủ.', 'Lỗi', 'error');
+            }
+        }
+
+        async function simulateCustomerOneClick(logId) {
+            try {
+                const res = await fetch(`/Booking/SimulateOneClick?logId=${logId}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(data.message, 'Xác nhận 1-Click thành công!');
+                    await loadRfmNotificationLogs();
+                    if (typeof loadAppointmentsKanban === 'function') loadAppointmentsKanban();
+                } else {
+                    showToast(data.message || 'Không thể xác nhận.', 'Lỗi', 'error');
+                }
+            } catch (err) {
+                showToast('Lỗi kết nối khi giả lập 1-click.', 'Lỗi', 'error');
+            }
+        }
+
+        // Hỗ trợ điều hướng trực tiếp từ URL /Rfm -> /#rfmSegmentationView hoặc /Notifications -> /#rfmNotificationsView
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.location.hash) {
+                const targetView = window.location.hash.substring(1);
+                if (document.getElementById(targetView)) {
+                    setTimeout(() => switchView(targetView), 150);
+                }
+            }
+        });
     </script>
 
     <!-- IN ẤN / XUẤT PDF CHUẨN ĐẸP -->

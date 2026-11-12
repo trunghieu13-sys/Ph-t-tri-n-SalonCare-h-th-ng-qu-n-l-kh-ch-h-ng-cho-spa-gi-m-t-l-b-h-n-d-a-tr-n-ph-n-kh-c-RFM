@@ -31,6 +31,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<CustomerInteraction> CustomerInteractions => Set<CustomerInteraction>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
+    public DbSet<RfmScore> RfmScores => Set<RfmScore>();
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -329,6 +332,66 @@ public class ApplicationDbContext : DbContext
                   .HasForeignKey(a => a.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // ==========================================
+        // 12. CẤU HÌNH BẢNG SYSTEM_CONFIGS (NGƯỠNG RFM ĐỘNG)
+        // ==========================================
+        modelBuilder.Entity<SystemConfig>(entity =>
+        {
+            entity.ToTable("system_configs");
+            entity.HasKey(sc => sc.ConfigKey);
+            entity.Property(sc => sc.ConfigKey).HasMaxLength(100);
+            entity.Property(sc => sc.ConfigValue).IsRequired().HasMaxLength(500);
+            entity.Property(sc => sc.Description).HasMaxLength(500);
+            entity.Property(sc => sc.UpdatedAt).HasDefaultValueSql("GETDATE()");
+        });
+
+        // ==========================================
+        // 13. CẤU HÌNH BẢNG RFM_SCORES (QUAN HỆ 1-1 VỚI CUSTOMERS)
+        // ==========================================
+        modelBuilder.Entity<RfmScore>(entity =>
+        {
+            entity.ToTable("rfm_scores");
+            entity.HasKey(r => r.CustomerId);
+            entity.Property(r => r.RecencyDays).HasDefaultValue(999);
+            entity.Property(r => r.FrequencyCount).HasDefaultValue(0);
+            entity.Property(r => r.MonetaryTotal).HasPrecision(18, 2).HasDefaultValue(0.00m);
+            entity.Property(r => r.NoShowCount).HasDefaultValue(0);
+            entity.Property(r => r.SegmentGroup).IsRequired().HasMaxLength(30).HasDefaultValue("New");
+            entity.Property(r => r.IsNoShowRisk).HasDefaultValue(false);
+            entity.Property(r => r.ReasonText).IsRequired().HasMaxLength(1000);
+            entity.Property(r => r.LastCalculatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(r => r.Customer)
+                  .WithOne(c => c.RfmScore)
+                  .HasForeignKey<RfmScore>(r => r.CustomerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ==========================================
+        // 14. CẤU HÌNH BẢNG NOTIFICATION_LOGS (NHẬT KÝ NHẮC LỊCH & 1-CLICK)
+        // ==========================================
+        modelBuilder.Entity<NotificationLog>(entity =>
+        {
+            entity.ToTable("notification_logs");
+            entity.HasKey(nl => nl.LogId);
+            entity.Property(nl => nl.Channel).IsRequired().HasMaxLength(30).HasDefaultValue("ZaloOA");
+            entity.Property(nl => nl.MessageType).IsRequired().HasMaxLength(30).HasDefaultValue("Reminder24h");
+            entity.Property(nl => nl.SegmentAtSendTime).IsRequired().HasMaxLength(30).HasDefaultValue("New");
+            entity.Property(nl => nl.Content).IsRequired();
+            entity.Property(nl => nl.Status).IsRequired().HasMaxLength(30).HasDefaultValue("Sent");
+            entity.Property(nl => nl.SentAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(nl => nl.Customer)
+                  .WithMany()
+                  .HasForeignKey(nl => nl.CustomerId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(nl => nl.Appointment)
+                  .WithMany()
+                  .HasForeignKey(nl => nl.AppointmentId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
     }
 
     // =========================================================================
@@ -421,7 +484,8 @@ public class ApplicationDbContext : DbContext
 
         foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.Entity is AuditLog || entry.Entity is Notification || entry.Entity is AppointmentService)
+            if (entry.Entity is AuditLog || entry.Entity is Notification || entry.Entity is AppointmentService ||
+                entry.Entity is RfmScore || entry.Entity is NotificationLog)
                 continue;
 
             if (entry.State != EntityState.Added && entry.State != EntityState.Modified && entry.State != EntityState.Deleted)
@@ -649,6 +713,19 @@ public class ApplicationDbContext : DbContext
                             ActionType = "CREATE",
                             Description = $"Nhân viên {actor.ActorName} phát động chiến dịch gửi tin \"{camp.CampaignName}\" qua kênh {camp.Channel} (Nhóm: {camp.TargetGroup}).",
                             EntityId = camp.CampaignId > 0 ? camp.CampaignId.ToString() : null
+                        });
+                        break;
+                    }
+
+                case SystemConfig cfg when entry.State == EntityState.Modified || entry.State == EntityState.Added:
+                    {
+                        list.Add(new PendingAuditEntry
+                        {
+                            Entity = cfg,
+                            ModuleName = "SETTINGS",
+                            ActionType = "UPDATE",
+                            Description = $"Nhân viên {actor.ActorName} cập nhật cấu hình ngưỡng RFM [{cfg.ConfigKey}] = \"{cfg.ConfigValue}\".",
+                            EntityId = cfg.ConfigKey
                         });
                         break;
                     }
