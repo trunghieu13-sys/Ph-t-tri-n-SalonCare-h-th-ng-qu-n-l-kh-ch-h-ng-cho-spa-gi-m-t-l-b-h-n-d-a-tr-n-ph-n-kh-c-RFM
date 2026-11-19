@@ -931,6 +931,153 @@
             </div>
         </div>
     </div>
+
+    <!-- ========================================================================= -->
+    <!-- MUST #3: BÁO CÁO TỈ LỆ BỎ HẸN & KHÁCH QUAY LẠI THEO NHÓM KHÁCH HÀNG (RFM) -->
+    <!-- ========================================================================= -->
+    <div class="pt-4 border-t border-white/10 space-y-5" id="must3NoShowRetentionSection">
+        <!-- Header & Filter Bar -->
+        <div class="glass-card rounded-2xl p-5 border border-rose-500/25 bg-gradient-to-r from-slate-900/90 via-purple-950/30 to-slate-900/90 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div class="flex items-start sm:items-center space-x-3.5">
+                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-500/20 to-purple-600/30 border border-rose-500/40 flex items-center justify-center text-rose-400 text-lg shrink-0">
+                    <i class="fa-solid fa-chart-column"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-white">Báo Cáo Tỉ Lệ Bỏ Hẹn & Khách Quay Lại Theo Nhóm Khách Hàng</h3>
+                </div>
+            </div>
+
+            <div class="flex items-center flex-wrap gap-2.5">
+                <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs">
+                    <span class="text-slate-400">Từ</span>
+                    <input type="date" id="inlineNsrFromDate" class="bg-transparent text-white font-medium focus:outline-none text-xs [color-scheme:dark]" />
+                    <span class="text-slate-400">Đến</span>
+                    <input type="date" id="inlineNsrToDate" class="bg-transparent text-white font-medium focus:outline-none text-xs [color-scheme:dark]" />
+                    <button type="button" id="btnInlineFilterNsr" onclick="loadInlineNoShowRetentionReport()" class="ml-1 px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all">
+                        <i class="fa-solid fa-filter mr-1"></i>Lọc dữ liệu
+                    </button>
+                </div>
+
+                <button type="button" onclick="exportInlineNoShowRetentionExcel()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/25 flex items-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span>Xuất Excel (.xlsx)</span>
+                </button>
+
+                <a href="/Reports/NoShowRetention" class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-purple-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all" title="Mở trang Báo cáo độc lập">
+                    <i class="fa-solid fa-up-right-from-square"></i>
+                    <span>Mở trang riêng</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- 4 Thẻ KPI Nhanh (Must #3) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="glass-card p-4 rounded-2xl border border-white/10">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-slate-400">Tổng lịch hẹn trong kỳ</span>
+                    <i class="fa-solid fa-calendar-days text-purple-400"></i>
+                </div>
+                <h4 id="inlineNsrTotalAppts" class="text-2xl font-bold text-white mt-1.5">0</h4>
+                <div class="mt-2 pt-2 border-t border-white/5 flex justify-between text-[11px] text-slate-400">
+                    <span>Hoàn thành: <strong id="inlineNsrCompleted" class="text-emerald-400">0</strong></span>
+                    <span>Đã hủy: <strong id="inlineNsrCancelled" class="text-slate-300">0</strong></span>
+                </div>
+            </div>
+
+            <div class="glass-card p-4 rounded-2xl border border-rose-500/25">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-slate-400">Tỉ lệ bỏ hẹn trung bình</span>
+                    <i class="fa-solid fa-user-xmark text-rose-400"></i>
+                </div>
+                <h4 id="inlineNsrAvgNoShowRate" class="text-2xl font-bold text-rose-400 mt-1.5">0.00%</h4>
+                <div class="mt-2 pt-2 border-t border-white/5 flex justify-between text-[11px] text-slate-400">
+                    <span>Số lượt khách bỏ hẹn:</span>
+                    <strong id="inlineNsrNoShowCount" class="text-rose-300">0 lượt</strong>
+                </div>
+            </div>
+
+            <div class="glass-card p-4 rounded-2xl border border-emerald-500/25">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-slate-400">Tỉ lệ khách quay lại</span>
+                    <i class="fa-solid fa-rotate text-emerald-400"></i>
+                </div>
+                <h4 id="inlineNsrAvgRetentionRate" class="text-2xl font-bold text-emerald-400 mt-1.5">0.00%</h4>
+                <div class="mt-2 pt-2 border-t border-white/5 flex justify-between text-[11px] text-slate-400">
+                    <span>Khách quay lại / Tổng:</span>
+                    <strong id="inlineNsrReturningRatio" class="text-emerald-300">0 / 0 khách</strong>
+                </div>
+            </div>
+
+            <div class="glass-card p-4 rounded-2xl border border-amber-500/25">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-slate-400">Nhóm bỏ hẹn cao nhất</span>
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+                </div>
+                <h4 id="inlineNsrHighestSegName" class="text-base font-bold text-amber-300 mt-2 truncate">---</h4>
+                <div class="mt-2 pt-2 border-t border-white/5 flex justify-between text-[11px] text-slate-400">
+                    <span>Tỉ lệ bỏ hẹn của nhóm:</span>
+                    <strong id="inlineNsrHighestSegRate" class="text-rose-400">0.00%</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Biểu đồ Cột đôi & Bảng Chi tiết (Layout 2 cột) -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            <!-- Cột trái (5/12): Biểu đồ cột đôi (Chart.js) -->
+            <div class="xl:col-span-5 glass-card p-5 rounded-2xl border border-white/10 flex flex-col justify-between">
+                <div>
+                    <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-chart-bar text-cyan-400"></i>
+                        <span>So Sánh Tỉ Lệ Quay Lại (%) & Tỉ Lệ Bỏ Hẹn (%)</span>
+                    </h4>
+                    <p class="text-xs text-slate-400 mt-0.5 mb-3">Biểu đồ cột đôi trực quan giữa các nhóm khách hàng</p>
+                </div>
+                <div class="relative h-72 w-full">
+                    <canvas id="inlineNoShowRetentionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Cột phải (7/12): Bảng chi tiết theo nhóm -->
+            <div class="xl:col-span-7 glass-card p-5 rounded-2xl border border-white/10 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-table-list text-purple-400"></i>
+                            <span>Bảng Chi Tiết Chỉ Số Theo Nhóm Khách Hàng</span>
+                        </h4>
+                        <span class="text-[11px] px-2.5 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-semibold">
+                            Tô đỏ cảnh báo nhóm có Bỏ hẹn &ge; 15%
+                        </span>
+                    </div>
+                    <div class="overflow-x-auto rounded-xl border border-white/10">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b border-white/10 bg-white/[0.04] text-slate-300 text-[11px] uppercase">
+                                    <th class="py-2.5 px-3 font-semibold">Nhóm khách</th>
+                                    <th class="py-2.5 px-2 font-semibold text-center">Tổng KH</th>
+                                    <th class="py-2.5 px-2 font-semibold text-center">Quay lại</th>
+                                    <th class="py-2.5 px-2 font-semibold text-right">% Quay lại</th>
+                                    <th class="py-2.5 px-2 font-semibold text-center">Lịch hẹn</th>
+                                    <th class="py-2.5 px-2 font-semibold text-center">Hoàn thành</th>
+                                    <th class="py-2.5 px-2 font-semibold text-center">Bỏ hẹn</th>
+                                    <th class="py-2.5 px-2 font-semibold text-center">Đã hủy</th>
+                                    <th class="py-2.5 px-2 font-semibold text-right">% Bỏ hẹn</th>
+                                    <th class="py-2.5 px-3 font-semibold text-right">Doanh thu</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inlineNsrTableBody" class="divide-y divide-white/5 text-slate-200">
+                                <tr>
+                                    <td colspan="10" class="py-6 text-center text-slate-400">Đang tải dữ liệu báo cáo theo phân khúc...</td>
+                                </tr>
+                            </tbody>
+                            <tfoot id="inlineNsrTableFoot" class="border-t-2 border-white/15 bg-white/[0.06] font-bold text-white">
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- VIEW 7: STAFF MANAGEMENT & ROLE PERMISSIONS -->
@@ -7168,9 +7315,195 @@
             }
         }
 
+        // =========================================================================
+        // MUST #3: BÁO CÁO TỈ LỆ BỎ HẸN & KHÁCH QUAY LẠI THEO NHÓM KHÁCH HÀNG
+        // =========================================================================
+        let inlineNsrChartInstance = null;
+
+        function initInlineNsrDates() {
+            const fromEl = document.getElementById('inlineNsrFromDate');
+            const toEl = document.getElementById('inlineNsrToDate');
+            if (!fromEl || !toEl) return;
+
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+
+            if (!fromEl.value) fromEl.value = `${yyyy}-${mm}-01`;
+            if (!toEl.value) toEl.value = `${yyyy}-${mm}-${dd}`;
+        }
+
+        async function loadInlineNoShowRetentionReport() {
+            initInlineNsrDates();
+            const fromDate = document.getElementById('inlineNsrFromDate')?.value || '';
+            const toDate = document.getElementById('inlineNsrToDate')?.value || '';
+
+            try {
+                const res = await fetch(`/Reports/GetNoShowAndRetentionReport?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`);
+                const data = await res.json();
+                if (!data || !data.success) return;
+
+                const setTxt = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = val;
+                };
+
+                setTxt('inlineNsrTotalAppts', Number(data.totalAppointments || 0).toLocaleString('vi-VN'));
+                setTxt('inlineNsrCompleted', Number(data.totalCompletedCount || 0).toLocaleString('vi-VN'));
+                setTxt('inlineNsrCancelled', Number(data.totalCancelledCount || 0).toLocaleString('vi-VN'));
+                setTxt('inlineNsrAvgNoShowRate', `${Number(data.averageNoShowRate || 0).toFixed(2)}%`);
+                setTxt('inlineNsrNoShowCount', `${Number(data.totalNoShowCount || 0).toLocaleString('vi-VN')} lượt`);
+                setTxt('inlineNsrAvgRetentionRate', `${Number(data.averageRetentionRate || 0).toFixed(2)}%`);
+                setTxt('inlineNsrReturningRatio', `${Number(data.totalReturningCustomers || 0).toLocaleString('vi-VN')} / ${Number(data.totalCustomers || 0).toLocaleString('vi-VN')} khách`);
+                setTxt('inlineNsrHighestSegName', data.highestNoShowSegmentName || 'Chưa có');
+                setTxt('inlineNsrHighestSegRate', `${Number(data.highestNoShowSegmentRate || 0).toFixed(2)}% (${Number(data.highestNoShowSegmentCount || 0)} ca)`);
+
+                const tbody = document.getElementById('inlineNsrTableBody');
+                const tfoot = document.getElementById('inlineNsrTableFoot');
+                const segments = data.segments || [];
+
+                if (tbody) {
+                    const badgeMap = {
+                        'VIP': 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                        'Than_thiet': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                        'Moi': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+                        'Nguy_co': 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+                    };
+
+                    tbody.innerHTML = segments.map(seg => {
+                        const isHigh = Number(seg.noShowRate || 0) >= 15.0;
+                        const rowCls = isHigh ? 'bg-rose-500/10 hover:bg-rose-500/15 transition' : 'hover:bg-white/5 transition';
+                        const pill = badgeMap[seg.segmentCode] || 'bg-purple-500/20 text-purple-300 border-purple-500/40';
+                        const nsBadge = isHigh
+                            ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-500/25 border border-rose-500/50 text-rose-300 font-bold"><i class="fa-solid fa-triangle-exclamation text-[10px]"></i>${Number(seg.noShowRate).toFixed(2)}%</span>`
+                            : `<span class="text-emerald-400 font-semibold">${Number(seg.noShowRate).toFixed(2)}%</span>`;
+
+                        return `
+                            <tr class="${rowCls}">
+                                <td class="py-2.5 px-3">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold border ${pill}">${seg.segmentCode}</span>
+                                        <span class="font-semibold text-white">${seg.segmentName}</span>
+                                    </div>
+                                </td>
+                                <td class="py-2.5 px-2 text-center">${Number(seg.totalCustomers).toLocaleString('vi-VN')}</td>
+                                <td class="py-2.5 px-2 text-center text-emerald-300">${Number(seg.returningCustomers).toLocaleString('vi-VN')}</td>
+                                <td class="py-2.5 px-2 text-right font-semibold text-emerald-400">${Number(seg.retentionRate).toFixed(2)}%</td>
+                                <td class="py-2.5 px-2 text-center font-semibold text-white">${Number(seg.totalAppointments).toLocaleString('vi-VN')}</td>
+                                <td class="py-2.5 px-2 text-center text-emerald-400">${Number(seg.completedCount).toLocaleString('vi-VN')}</td>
+                                <td class="py-2.5 px-2 text-center ${isHigh ? 'text-rose-400 font-bold' : 'text-slate-300'}">${Number(seg.noShowCount).toLocaleString('vi-VN')}</td>
+                                <td class="py-2.5 px-2 text-center text-slate-400">${Number(seg.cancelledCount).toLocaleString('vi-VN')}</td>
+                                <td class="py-2.5 px-2 text-right">${nsBadge}</td>
+                                <td class="py-2.5 px-3 text-right font-semibold text-amber-300">${seg.formattedRevenue}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+                if (tfoot) {
+                    const avgNs = Number(data.averageNoShowRate || 0);
+                    tfoot.innerHTML = `
+                        <tr>
+                            <td class="py-2.5 px-3 text-purple-300 uppercase text-[11px]">Tổng cộng / TB</td>
+                            <td class="py-2.5 px-2 text-center">${Number(data.totalCustomers || 0).toLocaleString('vi-VN')}</td>
+                            <td class="py-2.5 px-2 text-center text-emerald-300">${Number(data.totalReturningCustomers || 0).toLocaleString('vi-VN')}</td>
+                            <td class="py-2.5 px-2 text-right text-emerald-400">${Number(data.averageRetentionRate || 0).toFixed(2)}%</td>
+                            <td class="py-2.5 px-2 text-center">${Number(data.totalAppointments || 0).toLocaleString('vi-VN')}</td>
+                            <td class="py-2.5 px-2 text-center text-emerald-400">${Number(data.totalCompletedCount || 0).toLocaleString('vi-VN')}</td>
+                            <td class="py-2.5 px-2 text-center text-rose-400">${Number(data.totalNoShowCount || 0).toLocaleString('vi-VN')}</td>
+                            <td class="py-2.5 px-2 text-center text-slate-300">${Number(data.totalCancelledCount || 0).toLocaleString('vi-VN')}</td>
+                            <td class="py-2.5 px-2 text-right ${avgNs >= 15 ? 'text-rose-400' : 'text-emerald-400'}">${avgNs.toFixed(2)}%</td>
+                            <td class="py-2.5 px-3 text-right text-amber-300">${data.formattedTotalRevenue || '0đ'}</td>
+                        </tr>
+                    `;
+                }
+
+                renderInlineNoShowRetentionChart(segments);
+            } catch (err) {
+                console.error('Lỗi tải báo cáo Must #3:', err);
+            }
+        }
+
+        function renderInlineNoShowRetentionChart(segments) {
+            const canvas = document.getElementById('inlineNoShowRetentionChart');
+            if (!canvas) return;
+
+            if (inlineNsrChartInstance) {
+                inlineNsrChartInstance.destroy();
+            }
+
+            const labels = segments.map(s => s.segmentName);
+            const retRates = segments.map(s => Number(s.retentionRate || 0));
+            const nsRates = segments.map(s => Number(s.noShowRate || 0));
+
+            inlineNsrChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Tỉ lệ khách quay lại (%)',
+                            data: retRates,
+                            backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                            borderColor: '#10B981',
+                            borderWidth: 1.5,
+                            borderRadius: 6
+                        },
+                        {
+                            label: 'Tỉ lệ bỏ hẹn (%)',
+                            data: nsRates,
+                            backgroundColor: nsRates.map(v => v >= 15 ? 'rgba(244, 63, 94, 0.85)' : 'rgba(251, 146, 60, 0.75)'),
+                            borderColor: nsRates.map(v => v >= 15 ? '#F43F5E' : '#FB923C'),
+                            borderWidth: 1.5,
+                            borderRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { color: '#CBD5E1', font: { size: 11 } }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#94A3B8', font: { size: 10.5 } },
+                            grid: { color: 'rgba(255,255,255,0.04)' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                color: '#94A3B8',
+                                font: { size: 11 },
+                                callback: v => v + '%'
+                            },
+                            grid: { color: 'rgba(255,255,255,0.06)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function exportInlineNoShowRetentionExcel() {
+            initInlineNsrDates();
+            const fromDate = document.getElementById('inlineNsrFromDate')?.value || '';
+            const toDate = document.getElementById('inlineNsrToDate')?.value || '';
+            window.location.href = `/Reports/ExportNoShowRetentionExcel?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`;
+        }
+
         // Hỗ trợ điều hướng trực tiếp từ URL /Rfm -> /#rfmSegmentationView hoặc /Notifications -> /#rfmNotificationsView
         window.addEventListener('DOMContentLoaded', () => {
-            if (window.location.hash) {
+            loadInlineNoShowRetentionReport();
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryView = urlParams.get('view');
+            if (queryView && document.getElementById(queryView)) {
+                setTimeout(() => switchView(queryView), 150);
+            } else if (window.location.hash) {
                 const targetView = window.location.hash.substring(1);
                 if (document.getElementById(targetView)) {
                     setTimeout(() => switchView(targetView), 150);

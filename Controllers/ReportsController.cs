@@ -3,11 +3,14 @@ using System.Data.Common;
 using System.Globalization;
 using ClosedXML.Excel;
 using CRM_V2.Data;
+using CRM_V2.ViewModels;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Controllers;
 
+[Authorize(Roles = "Admin,Owner")]
 public class ReportsController : Controller
 {
     private readonly ApplicationDbContext _context;
@@ -18,6 +21,70 @@ public class ReportsController : Controller
     {
         _context = context;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// GET /Reports/NoShowRetention
+    /// Giao diện Báo cáo Tỉ lệ bỏ hẹn & Khách quay lại theo nhóm khách hàng (Must #3)
+    /// </summary>
+    [HttpGet]
+    public IActionResult NoShowRetention()
+    {
+        return View();
+    }
+
+    /// <summary>
+    /// GET /Reports/GetNoShowAndRetentionReport?fromDate=&toDate=
+    /// Gọi Stored Procedure sp_Report_NoShowAndRetentionBySegment và tính toán các chỉ số tổng quan toàn salon.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetNoShowAndRetentionReport(string? fromDate = null, string? toDate = null)
+    {
+        try
+        {
+            var (start, end) = ResolveCustomDateRange(fromDate, toDate);
+            var report = await FetchNoShowAndRetentionReportAsync(start, end);
+            return Json(report);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi lấy báo cáo tỉ lệ bỏ hẹn & khách quay lại theo phân khúc.");
+            return Json(new NoShowRetentionReportResponseDto
+            {
+                Success = false,
+                Message = "Đã xảy ra lỗi khi truy vấn báo cáo: " + ex.Message
+            });
+        }
+    }
+
+    /// <summary>
+    /// GET /Reports/ExportNoShowRetentionExcel?fromDate=&toDate=
+    /// Xuất báo cáo Tỉ lệ bỏ hẹn & Khách quay lại theo nhóm khách hàng ra file Excel (.xlsx) bằng ClosedXML.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> ExportNoShowRetentionExcel(string? fromDate = null, string? toDate = null)
+    {
+        try
+        {
+            var (start, end) = ResolveCustomDateRange(fromDate, toDate);
+            var report = await FetchNoShowAndRetentionReportAsync(start, end);
+
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Bỏ Hẹn & Khách Quay Lại");
+            BuildNoShowRetentionSheet(ws, report, start, end);
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var content = stream.ToArray();
+            var fileName = $"BaoCao_BoHen_KhachQuayLai_{start:yyyyMMdd}_{end:yyyyMMdd}.xlsx";
+
+            return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi xuất Excel báo cáo tỉ lệ bỏ hẹn & khách quay lại.");
+            return BadRequest("Không thể xuất file Excel: " + ex.Message);
+        }
     }
 
     /// <summary>
@@ -322,6 +389,105 @@ public class ReportsController : Controller
         return data;
     }
 
+    private static (DateTime Start, DateTime End) ResolveCustomDateRange(string? fromDate, string? toDate)
+    {
+        var today = DateTime.Today;
+        var defaultStart = new DateTime(today.Year, today.Month, 1);
+        var defaultEnd = today;
+
+        DateTime start = DateTime.TryParse(fromDate, out var parsedFrom) ? parsedFrom.Date : defaultStart;
+        DateTime end = DateTime.TryParse(toDate, out var parsedTo) ? parsedTo.Date : defaultEnd;
+
+        if (start > end)
+        {
+            (start, end) = (end, start);
+        }
+
+        return (start, end);
+    }
+
+    private async Task<NoShowRetentionReportResponseDto> FetchNoShowAndRetentionReportAsync(DateTime start, DateTime end)
+    {
+        var response = new NoShowRetentionReportResponseDto
+        {
+            Success = true,
+            FromDate = start.ToString("yyyy-MM-dd"),
+            ToDate = end.ToString("yyyy-MM-dd"),
+            FormattedDateRange = $"{start:dd/MM/yyyy} - {end:dd/MM/yyyy}"
+        };
+
+        var conn = _context.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "dbo.sp_Report_NoShowAndRetentionBySegment";
+            cmd.CommandType = CommandType.StoredProcedure;
+            AddParam(cmd, "@FromDate", start.Date);
+            AddParam(cmd, "@ToDate", end.Date);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var rev = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+                var item = new SegmentNoShowRetentionDto
+                {
+                    SegmentCode = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                    SegmentName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    TotalCustomers = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                    ReturningCustomers = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                    RetentionRate = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
+                    TotalAppointments = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                    CompletedCount = reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+                    NoShowCount = reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
+                    CancelledCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                    NoShowRate = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9),
+                    ActualRevenue = rev,
+                    FormattedRevenue = rev.ToString("N0", VnCulture) + "đ"
+                };
+
+                response.Segments.Add(item);
+            }
+        }
+
+        // Tính các chỉ số tổng quan toàn salon
+        response.TotalCustomers = response.Segments.Sum(s => s.TotalCustomers);
+        response.TotalReturningCustomers = response.Segments.Sum(s => s.ReturningCustomers);
+        response.AverageRetentionRate = response.TotalCustomers > 0
+            ? decimal.Round(response.TotalReturningCustomers * 100.0m / response.TotalCustomers, 2)
+            : 0m;
+
+        response.TotalAppointments = response.Segments.Sum(s => s.TotalAppointments);
+        response.TotalCompletedCount = response.Segments.Sum(s => s.CompletedCount);
+        response.TotalNoShowCount = response.Segments.Sum(s => s.NoShowCount);
+        response.TotalCancelledCount = response.Segments.Sum(s => s.CancelledCount);
+        response.AverageNoShowRate = response.TotalAppointments > 0
+            ? decimal.Round(response.TotalNoShowCount * 100.0m / response.TotalAppointments, 2)
+            : 0m;
+
+        response.TotalActualRevenue = response.Segments.Sum(s => s.ActualRevenue);
+        response.FormattedTotalRevenue = response.TotalActualRevenue.ToString("N0", VnCulture) + "đ";
+
+        var highestSegment = response.Segments
+            .Where(s => s.TotalAppointments > 0)
+            .OrderByDescending(s => s.NoShowRate)
+            .ThenByDescending(s => s.NoShowCount)
+            .FirstOrDefault() ?? response.Segments.FirstOrDefault();
+
+        if (highestSegment != null)
+        {
+            response.HighestNoShowSegmentCode = highestSegment.SegmentCode;
+            response.HighestNoShowSegmentName = highestSegment.SegmentName;
+            response.HighestNoShowSegmentRate = highestSegment.NoShowRate;
+            response.HighestNoShowSegmentCount = highestSegment.NoShowCount;
+        }
+
+        return response;
+    }
+
     private static void AddParam(DbCommand cmd, string name, object value)
     {
         var p = cmd.CreateParameter();
@@ -333,6 +499,196 @@ public class ReportsController : Controller
     #endregion
 
     #region Excel Sheets Styling & Builders
+
+    private static void BuildNoShowRetentionSheet(IXLWorksheet ws, NoShowRetentionReportResponseDto report, DateTime start, DateTime end)
+    {
+        // 1. Tiêu đề báo cáo
+        ws.Cell("A1").Value = "BÁO CÁO TỈ LỆ BỎ HẸN & KHÁCH QUAY LẠI THEO NHÓM KHÁCH HÀNG - SALONCARE CRM";
+        ws.Range("A1:K1").Merge().Style
+            .Font.SetBold().Font.SetFontSize(15).Font.SetFontColor(XLColor.White)
+            .Fill.SetBackgroundColor(XLColor.FromHtml("#4F46E5"))
+            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center)
+            .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
+        ws.Row(1).Height = 36;
+
+        // 2. Kỳ báo cáo
+        ws.Cell("A2").Value = $"Kỳ báo cáo: Từ ngày {start:dd/MM/yyyy} đến ngày {end:dd/MM/yyyy}  |  Ngày xuất báo cáo: {DateTime.Now:dd/MM/yyyy HH:mm}";
+        ws.Range("A2:K2").Merge().Style
+            .Font.SetItalic().Font.SetFontSize(11).Font.SetFontColor(XLColor.FromHtml("#334155"))
+            .Fill.SetBackgroundColor(XLColor.FromHtml("#EEF2FF"))
+            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center)
+            .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
+        ws.Row(2).Height = 24;
+
+        // 3. Header bảng in đậm (Dòng 4)
+        var headers = new[]
+        {
+            "Mã nhóm",
+            "Nhóm khách hàng",
+            "Tổng khách",
+            "Khách quay lại",
+            "Tỉ lệ quay lại (%)",
+            "Tổng lịch hẹn",
+            "Hoàn thành",
+            "Bỏ hẹn (No-Show)",
+            "Đã hủy",
+            "Tỉ lệ bỏ hẹn (%)",
+            "Doanh thu thực tế (VNĐ)"
+        };
+
+        int headerRow = 4;
+        ws.Row(headerRow).Height = 28;
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(headerRow, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.SetBold().Font.SetFontSize(11).Font.SetFontColor(XLColor.White)
+                .Fill.SetBackgroundColor(XLColor.FromHtml("#1E293B"))
+                .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center)
+                .Alignment.SetVertical(XLAlignmentVerticalValues.Center);
+            cell.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin).Border.SetOutsideBorderColor(XLColor.FromHtml("#94A3B8"));
+        }
+
+        // 4. Dữ liệu từng phân khúc
+        int firstDataRow = headerRow + 1;
+        int currentRow = firstDataRow;
+
+        foreach (var seg in report.Segments)
+        {
+            ws.Row(currentRow).Height = 24;
+
+            ws.Cell(currentRow, 1).Value = seg.SegmentCode;
+            ws.Cell(currentRow, 1).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            ws.Cell(currentRow, 2).Value = seg.SegmentName;
+            ws.Cell(currentRow, 2).Style.Font.SetBold();
+
+            var cTotalCust = ws.Cell(currentRow, 3);
+            cTotalCust.Value = seg.TotalCustomers;
+            cTotalCust.Style.NumberFormat.Format = "#,##0";
+            cTotalCust.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            var cRetCust = ws.Cell(currentRow, 4);
+            cRetCust.Value = seg.ReturningCustomers;
+            cRetCust.Style.NumberFormat.Format = "#,##0";
+            cRetCust.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            var cRetRate = ws.Cell(currentRow, 5);
+            cRetRate.Value = (double)(seg.RetentionRate / 100.0m);
+            cRetRate.Style.NumberFormat.Format = "0.00%";
+            cRetRate.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+
+            var cTotalAppt = ws.Cell(currentRow, 6);
+            cTotalAppt.Value = seg.TotalAppointments;
+            cTotalAppt.Style.NumberFormat.Format = "#,##0";
+            cTotalAppt.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            var cComp = ws.Cell(currentRow, 7);
+            cComp.Value = seg.CompletedCount;
+            cComp.Style.NumberFormat.Format = "#,##0";
+            cComp.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            var cNoShow = ws.Cell(currentRow, 8);
+            cNoShow.Value = seg.NoShowCount;
+            cNoShow.Style.NumberFormat.Format = "#,##0";
+            cNoShow.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            var cCanc = ws.Cell(currentRow, 9);
+            cCanc.Value = seg.CancelledCount;
+            cCanc.Style.NumberFormat.Format = "#,##0";
+            cCanc.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            var cNoShowRate = ws.Cell(currentRow, 10);
+            cNoShowRate.Value = (double)(seg.NoShowRate / 100.0m);
+            cNoShowRate.Style.NumberFormat.Format = "0.00%";
+            cNoShowRate.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+
+            // Tô đỏ chữ in đậm ở cột Tỉ lệ bỏ hẹn cho những nhóm có tỉ lệ >= 15% để cảnh báo
+            if (seg.NoShowRate >= 15.0m)
+            {
+                cNoShowRate.Style.Font.SetBold().Font.SetFontColor(XLColor.FromHtml("#DC2626"));
+                cNoShowRate.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#FEE2E2"));
+                cNoShow.Style.Font.SetBold().Font.SetFontColor(XLColor.FromHtml("#DC2626"));
+            }
+            else
+            {
+                cNoShowRate.Style.Font.SetFontColor(XLColor.FromHtml("#059669"));
+            }
+
+            var cRev = ws.Cell(currentRow, 11);
+            cRev.Value = (double)seg.ActualRevenue;
+            cRev.Style.NumberFormat.Format = "#,##0";
+            cRev.Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+
+            for (int col = 1; col <= 11; col++)
+            {
+                ws.Cell(currentRow, col).Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
+                    .Border.SetOutsideBorderColor(XLColor.FromHtml("#CBD5E1"));
+            }
+
+            currentRow++;
+        }
+
+        int lastDataRow = Math.Max(firstDataRow, currentRow - 1);
+        int summaryRow = currentRow;
+        ws.Row(summaryRow).Height = 26;
+
+        // 5. Dòng Tổng cộng / Trung bình ở cuối bảng dùng công thức Excel động (=SUM(...))
+        ws.Cell(summaryRow, 1).Value = "TỔNG CỘNG / TRUNG BÌNH";
+        ws.Range(summaryRow, 1, summaryRow, 2).Merge().Style
+            .Font.SetBold().Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 3).FormulaA1 = $"=SUM(C{firstDataRow}:C{lastDataRow})";
+        ws.Cell(summaryRow, 3).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 3).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 4).FormulaA1 = $"=SUM(D{firstDataRow}:D{lastDataRow})";
+        ws.Cell(summaryRow, 4).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 4).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 5).FormulaA1 = $"=IF(C{summaryRow}>0, D{summaryRow}/C{summaryRow}, 0)";
+        ws.Cell(summaryRow, 5).Style.NumberFormat.Format = "0.00%";
+        ws.Cell(summaryRow, 5).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+
+        ws.Cell(summaryRow, 6).FormulaA1 = $"=SUM(F{firstDataRow}:F{lastDataRow})";
+        ws.Cell(summaryRow, 6).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 6).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 7).FormulaA1 = $"=SUM(G{firstDataRow}:G{lastDataRow})";
+        ws.Cell(summaryRow, 7).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 7).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 8).FormulaA1 = $"=SUM(H{firstDataRow}:H{lastDataRow})";
+        ws.Cell(summaryRow, 8).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 8).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 9).FormulaA1 = $"=SUM(I{firstDataRow}:I{lastDataRow})";
+        ws.Cell(summaryRow, 9).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 9).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+        ws.Cell(summaryRow, 10).FormulaA1 = $"=IF(F{summaryRow}>0, H{summaryRow}/F{summaryRow}, 0)";
+        ws.Cell(summaryRow, 10).Style.NumberFormat.Format = "0.00%";
+        ws.Cell(summaryRow, 10).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+        if (report.AverageNoShowRate >= 15.0m)
+        {
+            ws.Cell(summaryRow, 10).Style.Font.SetFontColor(XLColor.FromHtml("#DC2626"));
+        }
+
+        ws.Cell(summaryRow, 11).FormulaA1 = $"=SUM(K{firstDataRow}:K{lastDataRow})";
+        ws.Cell(summaryRow, 11).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(summaryRow, 11).Style.Alignment.SetHorizontal(XLAlignmentHorizontalValues.Right);
+
+        var summaryRange = ws.Range(summaryRow, 1, summaryRow, 11);
+        summaryRange.Style.Font.SetBold();
+        summaryRange.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F5F9"));
+        for (int col = 1; col <= 11; col++)
+        {
+            ws.Cell(summaryRow, col).Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin)
+                .Border.SetOutsideBorderColor(XLColor.FromHtml("#64748B"));
+        }
+
+        ws.Columns().AdjustToContents();
+    }
 
     private static void BuildOverviewSheet(IXLWorksheet ws, ReportAggregateData data, string periodDisplay, DateTime start, DateTime end)
     {

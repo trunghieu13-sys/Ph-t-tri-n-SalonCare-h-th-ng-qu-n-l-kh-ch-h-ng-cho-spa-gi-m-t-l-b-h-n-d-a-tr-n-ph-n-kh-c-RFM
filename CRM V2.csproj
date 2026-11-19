@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>CRM_V2</RootNamespace>
+    <DefaultItemExcludes>$(DefaultItemExcludes);SalonCare.Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
