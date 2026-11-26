@@ -1,10 +1,86 @@
 @model CRM_V2.ViewModels.DashboardViewModel
 @{
     ViewData["Title"] = "SalonCare CRM - Quản lý thông minh, Chăm sóc tận tâm";
+    var isAdmin = User.IsInRole("Admin") || User.IsInRole("admin");
+    var isOwner = !isAdmin && (User.IsInRole("Owner") || User.IsInRole("owner"));
+    var isAdminOrOwner = isAdmin || isOwner;
+    var isStaffOnly = !isAdminOrOwner;
 }
 
 <!-- VIEW 1: DASHBOARD / OVERVIEW -->
 <div id="dashboardView" class="view-section active-view space-y-6">
+    @if (Model.PendingInvitations != null && Model.PendingInvitations.Count > 0)
+    {
+        <div id="spaInvitationsBanner" class="space-y-3">
+            @foreach (var inv in Model.PendingInvitations)
+            {
+                <div id="inviteCard_@inv.InvitationId" class="rounded-2xl p-4 sm:p-5 bg-gradient-to-r from-purple-600/25 via-indigo-600/15 to-pink-600/20 border border-purple-400/50 shadow-xl shadow-purple-900/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div class="flex items-start sm:items-center gap-3.5">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/25 border border-purple-400/50 text-purple-200 flex items-center justify-center shrink-0">
+                            <i class="fa-solid fa-people-group text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wider text-purple-300 font-semibold mb-0.5">Lời mời gia nhập đội ngũ</div>
+                            <p class="text-sm sm:text-base text-white font-semibold">
+                                Chủ Spa <span class="text-pink-300">@inv.OwnerName</span> mời bạn tham gia đội ngũ <span class="text-purple-200">@inv.SpaName</span>
+                            </p>
+                            <p class="text-[11px] text-slate-400 mt-0.5">Gửi lúc @inv.CreatedAt.ToString("HH:mm dd/MM/yyyy")</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 shrink-0">
+                        <button type="button" onclick="respondSpaInvitation(@inv.InvitationId, true, this)" class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-600/30 transition">
+                            <i class="fa-solid fa-check"></i><span>Đồng ý tham gia</span>
+                        </button>
+                        <button type="button" onclick="respondSpaInvitation(@inv.InvitationId, false, this)" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-rose-600/30 text-slate-200 hover:text-rose-300 border border-white/15 text-xs font-bold flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-xmark"></i><span>Từ chối</span>
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+        <script>
+            async function respondSpaInvitation(invitationId, accept, btn) {
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch(accept ? '/Staff/AcceptInvitation' : '/Staff/RejectInvitation', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ invitationId })
+                    });
+                    const result = await res.json();
+                    if (typeof showToast === 'function') showToast(result.message || (result.success ? 'Thành công' : 'Thất bại'), result.success ? 'success' : 'error');
+                    if (result.success) {
+                        // Cookie Claims (SpaId) đã được làm mới ở máy chủ -> tải lại để thấy dữ liệu của Spa
+                        setTimeout(() => window.location.reload(), accept ? 900 : 600);
+                    } else if (btn) {
+                        btn.disabled = false;
+                    }
+                } catch (e) {
+                    if (btn) btn.disabled = false;
+                    if (typeof showToast === 'function') showToast('Lỗi kết nối máy chủ!', 'error');
+                }
+            }
+        </script>
+    }
+    @if (Model.IsUnassignedStaff)
+    {
+        <div id="unassignedStaffBanner" class="rounded-2xl p-4 sm:p-5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-purple-500/15 border border-amber-500/40 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-start sm:items-center gap-3.5">
+                <div class="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-envelope-open-text text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm sm:text-base font-bold text-amber-200 flex items-center gap-2">
+                        <span>Thông báo Đội ngũ Spa</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">Chờ gia nhập</span>
+                    </h3>
+                    <p class="text-xs sm:text-sm text-slate-200 mt-0.5">
+                        @(Model.UnassignedBannerMessage ?? "Bạn chưa tham gia đội ngũ Spa nào. Vui lòng chờ Chủ Spa gửi lời mời hoặc kiểm tra mục Lời mời của tôi.")
+                    </p>
+                </div>
+            </div>
+        </div>
+    }
     <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
         <div class="xl:col-span-3 space-y-6">
             <!-- Hero Banner -->
@@ -243,14 +319,17 @@
                 <input type="text" id="custSearchInput" oninput="searchCustomers()" placeholder="Tìm theo tên/SĐT..." 
                     class="pl-9 pr-4 py-2 glass-input rounded-xl text-xs text-white w-48 sm:w-64 focus:border-purple-500 transition-all">
             </div>
-            <button onclick="openAddCustomerModal('import')" class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition">
-                <i class="fa-solid fa-file-import text-xs"></i>
-                <span>Nhập từ Excel / CSV</span>
-            </button>
-            <button onclick="openAddCustomerModal('manual')" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
-                <i class="fa-solid fa-user-plus text-xs"></i>
-                <span>Thêm khách mới</span>
-            </button>
+            @if (isAdminOrOwner)
+            {
+                <button onclick="openAddCustomerModal('import')" class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 transition">
+                    <i class="fa-solid fa-file-import text-xs"></i>
+                    <span>Nhập từ Excel / CSV</span>
+                </button>
+                <button onclick="openAddCustomerModal('manual')" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
+                    <i class="fa-solid fa-user-plus text-xs"></i>
+                    <span>Thêm khách mới</span>
+                </button>
+            }
         </div>
     </div>
 
@@ -301,16 +380,26 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2.5">
-            <button type="button" onclick="exportAppointmentsCsv()" 
-                class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-semibold flex items-center space-x-2 border border-white/10 transition">
-                <i class="fa-solid fa-file-export text-emerald-400"></i>
-                <span>Xuất dữ liệu (Excel/CSV)</span>
-            </button>
-            <button type="button" onclick="openBookingModal()" 
-                class="bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
-                <i class="fa-solid fa-plus"></i>
-                <span>Tạo lịch hẹn mới</span>
-            </button>
+            @if (isAdminOrOwner)
+            {
+                <button type="button" onclick="exportAppointmentsCsv()" 
+                    class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-semibold flex items-center space-x-2 border border-white/10 transition">
+                    <i class="fa-solid fa-file-export text-emerald-400"></i>
+                    <span>Xuất dữ liệu (Excel/CSV)</span>
+                </button>
+                <button type="button" onclick="openBookingModal()" 
+                    class="bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Tạo lịch hẹn mới</span>
+                </button>
+            }
+            else
+            {
+                <span class="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-eye text-purple-400"></i>
+                    <span>Chế độ Xem (Nhân viên)</span>
+                </span>
+            }
         </div>
     </div>
 
@@ -490,10 +579,13 @@
             <h3 class="text-sm font-bold text-white">Danh mục dịch vụ Salon & Spa</h3>
             <span id="servicesTotalBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">4 dịch vụ</span>
         </div>
-        <button type="button" onclick="openAddServiceModal()" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-lg shadow-purple-600/25 transition">
-            <i class="fa-solid fa-plus"></i>
-            <span>Thêm dịch vụ</span>
-        </button>
+        @if (isAdminOrOwner)
+        {
+            <button type="button" onclick="openAddServiceModal()" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-lg shadow-purple-600/25 transition">
+                <i class="fa-solid fa-plus"></i>
+                <span>Thêm dịch vụ</span>
+            </button>
+        }
     </div>
 
     <div id="servicesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1141,6 +1233,116 @@
             </button>
         </div>
     </div>
+
+    <!-- Mời nhân viên vào đội ngũ Spa -->
+    <div class="glass-card p-5 rounded-2xl border border-purple-500/30 space-y-3">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+                <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-user-plus text-pink-400"></i>
+                    <span>Mời nhân viên vào đội ngũ</span>
+                </h4>
+                <p class="text-[11px] text-slate-400 mt-0.5">Tìm tài khoản nhân viên đã đăng ký theo họ tên, tên đăng nhập hoặc email rồi gửi lời mời gia nhập quán của bạn.</p>
+            </div>
+            <div class="relative w-full md:max-w-sm">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="text" id="inviteSearchInput" oninput="debounceInviteSearch()" placeholder="Nhập họ tên, username hoặc email nhân viên..." class="w-full pl-9 pr-4 py-2 glass-input rounded-xl text-xs text-white placeholder-slate-400 border border-white/10 focus:border-purple-500 outline-none" />
+            </div>
+        </div>
+        <div id="inviteSearchResults" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-2.5"></div>
+    </div>
+
+    <script>
+        let inviteSearchTimer = null;
+        function debounceInviteSearch() {
+            clearTimeout(inviteSearchTimer);
+            inviteSearchTimer = setTimeout(searchStaffAccounts, 300);
+        }
+
+        function escHtml(s) {
+            return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function inviteStatusHtml(u) {
+            switch (u.inviteStatus) {
+                case 'Pending':
+                    return `<span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold"><i class="fa-solid fa-hourglass-half text-[10px]"></i> Pending - Đang chờ phản hồi</span>`;
+                case 'InTeam':
+                    return `<span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold"><i class="fa-solid fa-circle-check text-[10px]"></i> Đã thuộc đội ngũ</span>`;
+                case 'OtherSpa':
+                    return `<span class="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-slate-500/20 text-slate-300 border border-slate-500/30 font-semibold"><i class="fa-solid fa-store text-[10px]"></i> Đã thuộc quán khác</span>`;
+                default:
+                    return `<button type="button" onclick="sendSpaInvitation(${u.userId}, this)" class="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90 text-white text-[11px] font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition"><i class="fa-solid fa-paper-plane text-[10px]"></i> Gửi lời mời</button>`;
+            }
+        }
+
+        async function searchStaffAccounts() {
+            const box = document.getElementById('inviteSearchResults');
+            const q = (document.getElementById('inviteSearchInput')?.value || '').trim();
+            if (!box) return;
+            if (!q) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+
+            try {
+                const res = await fetch('/Staff/SearchStaffAccounts?query=' + encodeURIComponent(q));
+                const result = await res.json();
+                box.classList.remove('hidden');
+                if (!result.success || !result.data || result.data.length === 0) {
+                    box.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400 py-4">Không tìm thấy tài khoản nhân viên phù hợp.</div>`;
+                    return;
+                }
+                box.innerHTML = result.data.map(u => `
+                    <div class="flex items-center justify-between gap-3 bg-white/[0.04] border border-white/10 rounded-xl p-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <img src="${escHtml(u.avatarUrl)}" class="w-9 h-9 rounded-full object-cover ring-2 ring-purple-500/40" alt="" />
+                            <div class="min-w-0">
+                                <div class="text-xs font-bold text-white truncate">${escHtml(u.fullName)}</div>
+                                <div class="text-[11px] text-slate-400 truncate">&#64;${escHtml(u.username)} • ${escHtml(u.email)}</div>
+                            </div>
+                        </div>
+                        <div class="shrink-0">${inviteStatusHtml(u)}</div>
+                    </div>`).join('');
+            } catch (e) {
+                box.classList.remove('hidden');
+                box.innerHTML = `<div class="col-span-full text-center text-xs text-rose-400 py-4">Lỗi kết nối máy chủ khi tìm kiếm.</div>`;
+            }
+        }
+
+        async function sendSpaInvitation(inviteeUserId, btn) {
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/Staff/SendInvitation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ inviteeUserId })
+                });
+                const result = await res.json();
+                if (typeof showToast === 'function') showToast(result.message || '', result.success ? 'success' : 'error');
+                await searchStaffAccounts();
+            } catch (e) {
+                if (btn) btn.disabled = false;
+                if (typeof showToast === 'function') showToast('Lỗi kết nối máy chủ!', 'error');
+            }
+        }
+
+        async function removeFromTeam(userId, fullName) {
+            if (!confirm(`Mời "${fullName}" ra khỏi đội ngũ? Tài khoản này sẽ không còn thấy dữ liệu của quán.`)) return;
+            try {
+                const res = await fetch('/Staff/RemoveFromTeam', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                const result = await res.json();
+                if (typeof showToast === 'function') showToast(result.message || '', result.success ? 'success' : 'error');
+                if (result.success) {
+                    fetchStaffList();
+                    searchStaffAccounts();
+                }
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Lỗi kết nối máy chủ!', 'error');
+            }
+        }
+    </script>
 
     <!-- Staff Table Panel -->
     <div class="glass-card rounded-2xl border border-white/10 overflow-hidden">
@@ -2115,9 +2317,214 @@
     </div>
 </div>
 
+@if (isAdmin)
+{
+    <!-- VIEW 10: QUẢN TRỊ HỆ THỐNG TOÀN QUYỀN (CHỈ DÀNH CHO ADMIN) -->
+    <div id="adminSystemView" class="view-section space-y-6">
+        <!-- Header & Quick Stats -->
+        <div class="glass-card p-5 rounded-2xl border border-rose-500/30 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div>
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-crown text-rose-400"></i>
+                    <span>Quản Trị Hệ Thống Toàn Quyền (Multi-Tenant Super Admin)</span>
+                </h3>
+                <p class="text-xs text-slate-400 mt-1">Xem, chỉnh sửa, phân quyền vai trò (Admin / Owner / Staff), khóa hoặc xóa toàn bộ Tài khoản người dùng & Quán Spa trên hệ thống</p>
+            </div>
+            <div class="flex items-center flex-wrap gap-2.5 text-xs">
+                <div class="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
+                    <span class="text-slate-400">Tổng User:</span> <strong id="admTotalUsers" class="text-white">0</strong>
+                    <span class="text-slate-500 mx-1">|</span>
+                    <span class="text-emerald-400">Active:</span> <strong id="admActiveUsers" class="text-emerald-400">0</strong>
+                    <span class="text-slate-500 mx-1">|</span>
+                    <span class="text-amber-400">Khóa:</span> <strong id="admLockedUsers" class="text-amber-400">0</strong>
+                </div>
+                <div class="px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/30">
+                    <span class="text-purple-300">Tổng Quán Spa:</span> <strong id="admTotalSpas" class="text-white">0</strong>
+                </div>
+                <button type="button" onclick="loadAdminSystemOverview()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span>Làm mới</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- PHẦN 1: QUẢN LÝ TẤT CẢ QUÁN SPA (SPAS) -->
+        <div class="glass-card p-5 rounded-2xl border border-white/10 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-store text-purple-400"></i>
+                    <span>Danh sách Tất cả Quán Spa trên Hệ thống</span>
+                </h4>
+                <div class="relative w-full sm:w-72">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="adminSpaSearchInput" oninput="loadAdminSystemOverview()" placeholder="Tìm tên quán Spa, chủ quán, SĐT..." class="w-full pl-8 pr-3 py-1.5 glass-input rounded-xl text-xs text-white" />
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead>
+                        <tr class="text-slate-400 border-b border-white/10 bg-white/[0.02]">
+                            <th class="py-3 px-3 font-semibold">Mã Spa</th>
+                            <th class="py-3 px-3 font-semibold">Tên Quán Spa</th>
+                            <th class="py-3 px-3 font-semibold">Chủ Spa (Owner)</th>
+                            <th class="py-3 px-3 font-semibold">Liên hệ & Địa chỉ</th>
+                            <th class="py-3 px-3 font-semibold text-center">Quy mô dữ liệu</th>
+                            <th class="py-3 px-3 font-semibold text-center">Trạng thái</th>
+                            <th class="py-3 px-3 font-semibold text-right">Thao tác Admin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminSpasTableBody" class="divide-y divide-white/5 text-slate-200">
+                        <tr><td colspan="7" class="py-6 text-center text-slate-400">Đang tải danh sách quán Spa...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PHẦN 2: QUẢN LÝ TẤT CẢ TÀI KHOẢN NGƯỜI DÙNG (USERS) -->
+        <div class="glass-card p-5 rounded-2xl border border-white/10 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-users-gear text-cyan-400"></i>
+                    <span>Danh sách Tất cả Tài khoản Người dùng (Admin / Owner / Staff)</span>
+                </h4>
+                <div class="relative w-full sm:w-72">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="adminUserSearchInput" oninput="loadAdminSystemOverview()" placeholder="Tìm họ tên, username, email, SĐT..." class="w-full pl-8 pr-3 py-1.5 glass-input rounded-xl text-xs text-white" />
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead>
+                        <tr class="text-slate-400 border-b border-white/10 bg-white/[0.02]">
+                            <th class="py-3 px-3 font-semibold">Người dùng</th>
+                            <th class="py-3 px-3 font-semibold">Email & SĐT</th>
+                            <th class="py-3 px-3 font-semibold text-center">Vai trò (Role)</th>
+                            <th class="py-3 px-3 font-semibold">Thuộc Quán Spa</th>
+                            <th class="py-3 px-3 font-semibold text-center">Trạng thái</th>
+                            <th class="py-3 px-3 font-semibold text-right">Thao tác Admin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminUsersTableBody" class="divide-y divide-white/5 text-slate-200">
+                        <tr><td colspan="6" class="py-6 text-center text-slate-400">Đang tải danh sách tài khoản...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ADMIN SỬA NGƯỜI DÙNG -->
+    <div id="adminEditUserModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+        <div class="glass-card rounded-2xl p-6 border border-rose-500/30 w-full max-w-lg text-white shadow-2xl relative transform scale-95 transition-transform duration-300">
+            <button type="button" onclick="closeModal('adminEditUserModal')" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-user-pen text-rose-400"></i>
+                <span>Chỉnh sửa Tài khoản & Phân quyền</span>
+            </h3>
+            <form onsubmit="submitAdminUpdateUser(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="admEditUserId" />
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Họ và tên *</label>
+                        <input type="text" id="admEditUserFullName" required class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Email *</label>
+                        <input type="email" id="admEditUserEmail" required class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Số điện thoại</label>
+                        <input type="text" id="admEditUserPhone" class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Vai trò hệ thống</label>
+                        <select id="admEditUserRoleId" class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900">
+                            <option value="1">Quản trị viên (Admin)</option>
+                            <option value="2">Chủ Spa (Owner)</option>
+                            <option value="3">Nhân viên (Staff)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Gán vào Quán Spa</label>
+                        <select id="admEditUserSpaId" class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900">
+                            <option value="">-- Chưa thuộc Spa nào (NULL) --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Trạng thái</label>
+                        <select id="admEditUserStatus" class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900">
+                            <option value="active">Đang hoạt động (active)</option>
+                            <option value="locked">Tạm khóa (locked)</option>
+                            <option value="resigned">Đã nghỉ (resigned)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Đặt lại mật khẩu mới (bỏ trống nếu không đổi)</label>
+                    <input type="password" id="admEditUserNewPass" placeholder="Tối thiểu 6 ký tự..." class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                </div>
+                <div class="pt-3 border-t border-white/10 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('adminEditUserModal')" class="px-4 py-2 rounded-xl bg-white/10 text-slate-300">Hủy</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-purple-600 text-white font-bold">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL ADMIN SỬA QUÁN SPA -->
+    <div id="adminEditSpaModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+        <div class="glass-card rounded-2xl p-6 border border-purple-500/30 w-full max-w-lg text-white shadow-2xl relative transform scale-95 transition-transform duration-300">
+            <button type="button" onclick="closeModal('adminEditSpaModal')" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-store text-purple-400"></i>
+                <span>Chỉnh sửa Thông tin Quán Spa</span>
+            </h3>
+            <form onsubmit="submitAdminUpdateSpa(event)" class="space-y-3 text-xs">
+                <input type="hidden" id="admEditSpaId" />
+                <div>
+                    <label class="block text-slate-400 mb-1">Tên Quán Spa *</label>
+                    <input type="text" id="admEditSpaName" required class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Số điện thoại</label>
+                        <input type="text" id="admEditSpaPhone" class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Trạng thái</label>
+                        <select id="admEditSpaStatus" class="w-full glass-input rounded-xl px-3 py-2 text-white bg-slate-900">
+                            <option value="active">Đang hoạt động (active)</option>
+                            <option value="locked">Tạm khóa (locked)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Địa chỉ</label>
+                    <input type="text" id="admEditSpaAddress" class="w-full glass-input rounded-xl px-3 py-2 text-white" />
+                </div>
+                <div class="pt-3 border-t border-white/10 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('adminEditSpaModal')" class="px-4 py-2 rounded-xl bg-white/10 text-slate-300">Hủy</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold">Lưu thông tin</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
 
 @section Scripts {
     <script>
+        const IS_STAFF_ONLY = @(isStaffOnly ? "true" : "false");
+        const IS_ADMIN = @(isAdmin ? "true" : "false");
+        const IS_ADMIN_OR_OWNER = @(isAdminOrOwner ? "true" : "false");
+
         // APP STATE (Appointments, Services, Staff)
         const appState = {
             appointments: [
@@ -2169,7 +2576,8 @@
                 reportsView: 'Báo cáo Kinh doanh 📊',
                 staffView: 'Đội ngũ Nhân viên 👩‍⚕️',
                 settingsView: 'Cài đặt Hệ thống ⚙️',
-                auditLogsView: 'Nhật ký Hệ thống & Bảo mật 🛡️'
+                auditLogsView: 'Nhật ký Hệ thống & Bảo mật 🛡️',
+                adminSystemView: 'Quản trị Hệ thống Toàn quyền 👑'
             };
             document.getElementById('currentViewTitle').innerText = titles[viewId] || 'SalonCare CRM';
 
@@ -2190,6 +2598,8 @@
                 fetchStaffList();
             } else if (viewId === 'auditLogsView') {
                 fetchAuditLogs();
+            } else if (viewId === 'adminSystemView' && typeof loadAdminSystemOverview === 'function') {
+                loadAdminSystemOverview();
             }
 
             // Auto Close Sidebar Mobile
@@ -2324,12 +2734,14 @@
                             <button title="Xem hồ sơ chi tiết & Giải thích RFM" onclick="viewCustomerDetail(${c.id})" class="text-purple-400 hover:text-purple-300 p-1.5 rounded-lg hover:bg-white/5 transition">
                                 <i class="fa-solid fa-eye text-sm"></i>
                             </button>
+                            ${!IS_STAFF_ONLY ? `
                             <button title="Gửi thông báo / Nhắc nhở" onclick="showToast('Đang mở cổng gửi tin tới khách hàng ' + '${c.name}' + '!')" class="text-pink-400 hover:text-pink-300 p-1.5 rounded-lg hover:bg-white/5 transition">
                                 <i class="fa-solid fa-paper-plane text-sm"></i>
                             </button>
                             <button title="Xóa khách hàng" onclick="openDeleteCustomerModal(${c.id})" class="text-rose-400 hover:text-rose-300 p-1.5 rounded-lg hover:bg-rose-500/10 transition">
                                 <i class="fa-solid fa-trash-can text-sm"></i>
                             </button>
+                            ` : ''}
                         </td>
                     </tr>
                 `;
@@ -2641,6 +3053,7 @@
                                     <p class="text-xs text-slate-300 mt-0.5"><i class="fa-solid fa-phone text-[10px] text-purple-400"></i> ${c.phone} • <i class="fa-solid fa-venus-mars text-[10px] text-pink-400"></i> ${c.gender}</p>
                                 </div>
                             </div>
+                            ${!IS_STAFF_ONLY ? `
                             <div class="flex items-center space-x-2">
                                 <button type="button" onclick="openEditCustomerModal(${c.id})" title="Chỉnh sửa thông tin" 
                                     class="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold flex items-center space-x-1.5 transition">
@@ -2653,6 +3066,7 @@
                                     <span class="hidden sm:inline">Xóa</span>
                                 </button>
                             </div>
+                            ` : ''}
                         </div>
 
                         <!-- KHUNG GIẢI THÍCH PHÂN KHÚC RFM (EXPLAINABILITY) -->
@@ -2753,21 +3167,25 @@
 
                         <!-- Footer chứa nút Đóng, Xóa và Chỉnh sửa -->
                         <div class="pt-4 border-t border-white/10 flex items-center justify-between">
+                            ${!IS_STAFF_ONLY ? `
                             <button type="button" onclick="closeModal('customerProfileModal'); openDeleteCustomerModal(${c.id})" 
                                 class="px-4 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 font-semibold text-xs flex items-center space-x-1.5 transition">
                                 <i class="fa-solid fa-trash-can text-xs"></i>
                                 <span>Xóa khách hàng</span>
                             </button>
+                            ` : '<div></div>'}
                             <div class="flex items-center space-x-2">
                                 <button type="button" onclick="closeModal('customerProfileModal')" 
                                     class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-semibold text-xs transition">
                                     Đóng
                                 </button>
+                                ${!IS_STAFF_ONLY ? `
                                 <button type="button" onclick="openEditCustomerModal(${c.id})" 
                                     class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center space-x-2 transition">
                                     <i class="fa-solid fa-pen-to-square"></i>
                                     <span>Chỉnh sửa hồ sơ</span>
                                 </button>
+                                ` : ''}
                             </div>
                         </div>
                     `;
@@ -3563,27 +3981,29 @@
                     ).join(' ');
 
                     let quickActionBtn = '';
-                    if (a.status === 'Pending') {
-                        quickActionBtn = `
-                            <button type="button" onclick="quickUpdateApptStatus(${a.id}, 'Confirmed')" 
-                                class="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] flex items-center gap-1 transition">
-                                <i class="fa-solid fa-check"></i> Xác nhận
-                            </button>`;
-                    } else if (a.status === 'Confirmed') {
-                        quickActionBtn = `
-                            <button type="button" onclick="quickUpdateApptStatus(${a.id}, 'InService')" 
-                                class="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] flex items-center gap-1 transition">
-                                <i class="fa-solid fa-play"></i> Phục vụ
-                            </button>`;
-                    } else if (a.status === 'InService') {
-                        quickActionBtn = `
-                            <button type="button" onclick="quickUpdateApptStatus(${a.id}, 'Completed')" 
-                                class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 transition">
-                                <i class="fa-solid fa-check-double"></i> Hoàn tất
-                            </button>`;
+                    if (!IS_STAFF_ONLY) {
+                        if (a.status === 'Pending') {
+                            quickActionBtn = `
+                                <button type="button" onclick="quickUpdateApptStatus(${a.id}, 'Confirmed')" 
+                                    class="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[10px] flex items-center gap-1 transition">
+                                    <i class="fa-solid fa-check"></i> Xác nhận
+                                </button>`;
+                        } else if (a.status === 'Confirmed') {
+                            quickActionBtn = `
+                                <button type="button" onclick="quickUpdateApptStatus(${a.id}, 'InService')" 
+                                    class="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] flex items-center gap-1 transition">
+                                    <i class="fa-solid fa-play"></i> Phục vụ
+                                </button>`;
+                        } else if (a.status === 'InService') {
+                            quickActionBtn = `
+                                <button type="button" onclick="quickUpdateApptStatus(${a.id}, 'Completed')" 
+                                    class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 transition">
+                                    <i class="fa-solid fa-check-double"></i> Hoàn tất
+                                </button>`;
+                        }
                     }
 
-                    const cancelBtn = (a.status !== 'Cancelled' && a.status !== 'Completed')
+                    const cancelBtn = (!IS_STAFF_ONLY && a.status !== 'Cancelled' && a.status !== 'Completed')
                         ? `<button type="button" onclick="openCancelAppointmentModal(${a.id})" title="Hủy lịch hẹn" 
                                class="w-6 h-6 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white flex items-center justify-center transition">
                                <i class="fa-solid fa-xmark text-[10px]"></i>
@@ -3591,10 +4011,9 @@
                         : '';
 
                     const cardHtml = `
-                        <div draggable="true"
-                             ondragstart="handleKanbanDragStart(event, ${a.id}, '${a.status}')"
-                             ondragend="handleKanbanDragEnd(event)"
-                             class="kanban-card p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 hover:border-purple-500/40 shadow-lg cursor-grab active:cursor-grabbing transition space-y-2.5 text-xs">
+                        <div draggable="${!IS_STAFF_ONLY}"
+                             ${!IS_STAFF_ONLY ? `ondragstart="handleKanbanDragStart(event, ${a.id}, '${a.status}')" ondragend="handleKanbanDragEnd(event)"` : ''}
+                             class="kanban-card p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800/90 border border-white/10 hover:border-purple-500/40 shadow-lg ${!IS_STAFF_ONLY ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} transition space-y-2.5 text-xs">
                             
                             <!-- Dòng 1: Mã lịch & Giờ hẹn -->
                             <div class="flex items-center justify-between text-[10px]">
@@ -3671,8 +4090,9 @@
             }
         }
 
-        // 3. Xử lý Kéo Thả (HTML5 Drag & Drop) giữa các cột Kanban
+        // 3. Xử lý Kéo Thả (HTML5 Drag & Drop) giữa các cột Kanban (Khóa đối với tài khoản Staff)
         function handleKanbanDragStart(e, appointmentId, currentStatus) {
+            if (IS_STAFF_ONLY) { e.preventDefault(); return; }
             draggedApptId = appointmentId;
             draggedFromStatus = currentStatus;
             e.dataTransfer.setData('text/plain', appointmentId);
@@ -3687,6 +4107,7 @@
         }
 
         function handleKanbanDragOver(e) {
+            if (IS_STAFF_ONLY) return;
             e.preventDefault();
             e.currentTarget.classList.add('ring-2', 'ring-purple-500', 'bg-purple-900/20');
         }
@@ -3698,6 +4119,7 @@
         async function handleKanbanDrop(e, targetStatus) {
             e.preventDefault();
             e.currentTarget.classList.remove('ring-2', 'ring-purple-500', 'bg-purple-900/20');
+            if (IS_STAFF_ONLY) return;
 
             const apptId = draggedApptId || parseInt(e.dataTransfer.getData('text/plain'));
             if (!apptId || draggedFromStatus === targetStatus) return;
@@ -3895,11 +4317,13 @@
                         </div>
                         <div class="flex items-center gap-2.5">
                             <span class="text-emerald-400 font-bold">${s.formattedPrice}</span>
+                            ${!IS_STAFF_ONLY ? `
                             <button type="button" onclick="hideServiceFromDisplay(${a.id}, ${s.id})"
                                 title="Xóa hiển thị dịch vụ này (Không xóa trong SQL)"
                                 class="px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-semibold flex items-center gap-1 transition">
                                 <i class="fa-solid fa-eye-slash"></i> Xóa hiển thị
                             </button>
+                            ` : ''}
                         </div>
                     </div>
                 `).join('');
@@ -3943,7 +4367,8 @@
                         </div>
                     </div>
 
-                    <!-- Form Đổi Lịch / Điều Phối Nhân Viên -->
+                    <!-- Form Đổi Lịch / Điều Phối Nhân Viên (Chỉ hiển thị cho Admin / Owner) -->
+                    ${!IS_STAFF_ONLY ? `
                     <form onsubmit="handleRescheduleSubmit(event, ${a.id})" class="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/20 space-y-3.5">
                         <div class="flex items-center justify-between">
                             <h4 class="text-xs font-bold text-purple-300 uppercase flex items-center gap-1.5">
@@ -4014,9 +4439,12 @@
                             </button>
                         </div>
                     </form>
+                    ` : ''}
                 `;
 
-                await refreshAvailableEmployeesForReschedule(a.id, totalDur, a.employeeId);
+                if (!IS_STAFF_ONLY) {
+                    await refreshAvailableEmployeesForReschedule(a.id, totalDur, a.employeeId);
+                }
             } catch (err) {
                 content.innerHTML = `<p class="text-rose-400 text-center p-4">Lỗi kết nối khi tải chi tiết lịch hẹn.</p>`;
             }
@@ -4326,6 +4754,7 @@
                         </div>
                         <div class="flex justify-between items-center pt-3 border-t border-white/10">
                             <span class="text-base font-bold text-emerald-400">${s.formattedPrice}</span>
+                            ${!IS_STAFF_ONLY ? `
                             <div class="flex items-center space-x-3">
                                 <button type="button" onclick="openEditServiceModal(${s.serviceId})" class="text-xs font-medium text-purple-400 hover:text-purple-300 transition">
                                     Chỉnh sửa
@@ -4334,6 +4763,7 @@
                                     <i class="fa-solid fa-trash-can text-xs"></i>
                                 </button>
                             </div>
+                            ` : ''}
                         </div>
                     </div>
                 `;
@@ -4749,6 +5179,9 @@
                                 <button type="button" onclick="toggleStaffStatus(${st.userId}, '${st.fullName.replace(/'/g, "\\'")}', '${st.status}')" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-amber-400 border border-white/10 transition-all text-xs" title="${st.status === 'active' ? 'Tạm khóa tài khoản' : 'Mở khóa tài khoản'}">
                                     <i class="fa-solid ${st.status === 'active' ? 'fa-lock' : 'fa-lock-open'}"></i>
                                 </button>
+
+                                <!-- Nút Xóa khỏi đội ngũ (chỉ với nhân viên staff thuộc quán) -->
+                                ${st.roleId === 3 ? `<button type="button" onclick="removeFromTeam(${st.userId}, '${st.fullName.replace(/'/g, "\\'")}')" class="px-2 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all" title="Xóa khỏi đội ngũ"><i class="fa-solid fa-user-minus text-[10px]"></i><span>Xóa khỏi đội ngũ</span></button>` : ''}
 
                                 <!-- Nút Xóa / Nghỉ việc -->
                                 <button type="button" onclick="deleteStaff(${st.userId}, '${st.fullName.replace(/'/g, "\\'")}')" class="p-1.5 rounded-lg bg-white/5 hover:bg-rose-600/30 text-slate-400 hover:text-rose-400 border border-white/10 transition-all text-xs" title="Đánh dấu đã nghỉ việc">
@@ -5652,11 +6085,270 @@
             loadAppointmentMetadata();
             loadAppointmentsKanban();
             loadServicesToDropdown();
-            loadCustomerCareDashboard();
-            fetchStaffList();
-            loadReportsDashboard();
+            if (IS_ADMIN_OR_OWNER) {
+                loadCustomerCareDashboard();
+                fetchStaffList();
+                loadReportsDashboard();
+            }
+            if (IS_ADMIN && typeof loadAdminSystemOverview === 'function') {
+                loadAdminSystemOverview();
+            }
             loadDashboardOverview();
         });
+
+        // =========================================================================
+        // PHÂN HỆ: QUẢN TRỊ HỆ THỐNG TOÀN QUYỀN (SUPER ADMIN)
+        // =========================================================================
+        let cachedAdminUsers = [];
+        let cachedAdminSpas = [];
+
+        async function loadAdminSystemOverview() {
+            if (!IS_ADMIN) return;
+            const userSearch = document.getElementById('adminUserSearchInput')?.value || '';
+            const spaSearch = document.getElementById('adminSpaSearchInput')?.value || '';
+
+            try {
+                const res = await fetch(`/Admin/GetSystemOverview?userSearch=${encodeURIComponent(userSearch)}&spaSearch=${encodeURIComponent(spaSearch)}`);
+                const result = await res.json();
+                if (!result.success) return;
+
+                cachedAdminUsers = result.users || [];
+                cachedAdminSpas = result.spas || [];
+
+                if (result.stats) {
+                    const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+                    setEl('admTotalUsers', result.stats.totalUsers);
+                    setEl('admActiveUsers', result.stats.activeUsers);
+                    setEl('admLockedUsers', result.stats.lockedUsers);
+                    setEl('admTotalSpas', result.stats.totalSpas);
+                }
+
+                renderAdminSpasTable(cachedAdminSpas);
+                renderAdminUsersTable(cachedAdminUsers);
+            } catch (e) {
+                console.error('Lỗi tải dữ liệu Quản trị hệ thống:', e);
+            }
+        }
+
+        function renderAdminSpasTable(spas) {
+            const tbody = document.getElementById('adminSpasTableBody');
+            if (!tbody) return;
+            if (!spas.length) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">Không tìm thấy quán Spa nào.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = spas.map(s => {
+                const stBadge = s.status === 'active'
+                    ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">Đang hoạt động</span>`
+                    : `<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">Tạm khóa</span>`;
+                return `
+                    <tr class="hover:bg-white/[0.03] transition">
+                        <td class="py-3 px-3 font-mono text-purple-300 font-bold">#${s.spaId}</td>
+                        <td class="py-3 px-3">
+                            <div class="font-bold text-white">${escapeHtml(s.spaName)}</div>
+                            <div class="text-[10px] text-slate-400">Tạo: ${escapeHtml(s.createdAt)}</div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="text-slate-200 font-medium">${escapeHtml(s.ownerName)}</div>
+                            <div class="text-[11px] text-slate-400 font-mono">&#64;${escapeHtml(s.ownerUsername)}</div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="text-slate-300">${escapeHtml(s.phone || 'Chưa cập nhật')}</div>
+                            <div class="text-[11px] text-slate-400 truncate max-w-[200px]">${escapeHtml(s.address || 'Chưa có địa chỉ')}</div>
+                        </td>
+                        <td class="py-3 px-3 text-center">
+                            <span class="px-2 py-0.5 rounded bg-white/5 text-slate-200 text-[11px]">${s.membersCount} NV • ${s.customersCount} KH • ${s.appointmentsCount} Lịch</span>
+                        </td>
+                        <td class="py-3 px-3 text-center">${stBadge}</td>
+                        <td class="py-3 px-3 text-right">
+                            <div class="flex items-center justify-end gap-1.5">
+                                <button type="button" onclick="openAdminEditSpaModal(${s.spaId})" class="px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-[11px] font-semibold">Sửa</button>
+                                <button type="button" onclick="adminToggleSpaStatus(${s.spaId})" class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/30 text-[11px] font-semibold">${s.status === 'active' ? 'Khóa' : 'Mở'}</button>
+                                <button type="button" onclick="adminDeleteSpa(${s.spaId}, '${escapeHtml(s.spaName)}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-[11px] font-semibold">Xóa</button>
+                            </div>
+                        </td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function renderAdminUsersTable(users) {
+            const tbody = document.getElementById('adminUsersTableBody');
+            if (!tbody) return;
+            if (!users.length) {
+                tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-400">Không tìm thấy tài khoản nào.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = users.map(u => {
+                const roleBadge = u.roleId === 1
+                    ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 font-semibold">Admin</span>`
+                    : u.roleId === 2
+                        ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 font-semibold">Owner (Chủ Spa)</span>`
+                        : `<span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">Staff (Nhân viên)</span>`;
+                const stBadge = u.status === 'active'
+                    ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-semibold">Active</span>`
+                    : u.status === 'locked'
+                        ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-semibold">Locked</span>`
+                        : `<span class="px-2 py-0.5 rounded-full text-[10px] bg-slate-500/20 text-slate-300 font-semibold">${escapeHtml(u.status)}</span>`;
+
+                return `
+                    <tr class="hover:bg-white/[0.03] transition">
+                        <td class="py-3 px-3">
+                            <div class="flex items-center gap-2.5">
+                                <img src="${escapeHtml(u.avatarUrl)}" class="w-8 h-8 rounded-full object-cover" alt="" />
+                                <div>
+                                    <div class="font-bold text-white">${escapeHtml(u.fullName)}</div>
+                                    <div class="text-[11px] text-slate-400 font-mono">&#64;${escapeHtml(u.username)} • #${u.userId}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="text-slate-200">${escapeHtml(u.email)}</div>
+                            <div class="text-[11px] text-slate-400">${escapeHtml(u.phone || '---')}</div>
+                        </td>
+                        <td class="py-3 px-3 text-center">${roleBadge}</td>
+                        <td class="py-3 px-3">
+                            <span class="text-xs ${u.spaId ? 'text-purple-300 font-medium' : 'text-slate-500 italic'}">${escapeHtml(u.spaName)}</span>
+                        </td>
+                        <td class="py-3 px-3 text-center">${stBadge}</td>
+                        <td class="py-3 px-3 text-right">
+                            <div class="flex items-center justify-end gap-1.5">
+                                <button type="button" onclick="openAdminEditUserModal(${u.userId})" class="px-2.5 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/30 text-[11px] font-semibold">Sửa / Đổi quyền</button>
+                                <button type="button" onclick="adminToggleUserStatus(${u.userId})" class="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white border border-amber-500/30 text-[11px] font-semibold">${u.status === 'active' ? 'Khóa' : 'Mở'}</button>
+                                <button type="button" onclick="adminDeleteUser(${u.userId}, '${escapeHtml(u.fullName)}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-[11px] font-semibold">Xóa</button>
+                            </div>
+                        </td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function openAdminEditUserModal(userId) {
+            const u = cachedAdminUsers.find(x => x.userId === userId);
+            if (!u) return;
+            document.getElementById('admEditUserId').value = u.userId;
+            document.getElementById('admEditUserFullName').value = u.fullName;
+            document.getElementById('admEditUserEmail').value = u.email;
+            document.getElementById('admEditUserPhone').value = u.phone || '';
+            document.getElementById('admEditUserRoleId').value = u.roleId;
+            document.getElementById('admEditUserStatus').value = u.status || 'active';
+            document.getElementById('admEditUserNewPass').value = '';
+
+            const spaSelect = document.getElementById('admEditUserSpaId');
+            if (spaSelect) {
+                spaSelect.innerHTML = `<option value="">-- Chưa thuộc Spa nào (NULL) --</option>` +
+                    cachedAdminSpas.map(s => `<option value="${s.spaId}">#${s.spaId} - ${escapeHtml(s.spaName)}</option>`).join('');
+                spaSelect.value = u.spaId ? String(u.spaId) : '';
+            }
+            openModal('adminEditUserModal');
+        }
+
+        async function submitAdminUpdateUser(e) {
+            e.preventDefault();
+            const spaVal = document.getElementById('admEditUserSpaId').value;
+            const payload = {
+                userId: parseInt(document.getElementById('admEditUserId').value),
+                fullName: document.getElementById('admEditUserFullName').value,
+                email: document.getElementById('admEditUserEmail').value,
+                phone: document.getElementById('admEditUserPhone').value,
+                roleId: parseInt(document.getElementById('admEditUserRoleId').value),
+                spaId: spaVal ? parseInt(spaVal) : null,
+                status: document.getElementById('admEditUserStatus').value,
+                newPassword: document.getElementById('admEditUserNewPass').value
+            };
+
+            const res = await fetch('/Admin/UpdateUser', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            showToast(result.message || '', result.success ? 'Thành công' : 'Lỗi');
+            if (result.success) {
+                closeModal('adminEditUserModal');
+                loadAdminSystemOverview();
+                fetchStaffList();
+            }
+        }
+
+        async function adminToggleUserStatus(userId) {
+            const res = await fetch('/Admin/ToggleUserStatus', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: userId })
+            });
+            const result = await res.json();
+            showToast(result.message || '', result.success ? 'Cập nhật' : 'Lỗi');
+            if (result.success) loadAdminSystemOverview();
+        }
+
+        async function adminDeleteUser(userId, fullName) {
+            if (!confirm(`Xác nhận xóa tài khoản "${fullName}" (#${userId})?`)) return;
+            const res = await fetch('/Admin/DeleteUser', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: userId })
+            });
+            const result = await res.json();
+            showToast(result.message || '', result.success ? 'Đã xóa' : 'Lỗi');
+            if (result.success) loadAdminSystemOverview();
+        }
+
+        function openAdminEditSpaModal(spaId) {
+            const s = cachedAdminSpas.find(x => x.spaId === spaId);
+            if (!s) return;
+            document.getElementById('admEditSpaId').value = s.spaId;
+            document.getElementById('admEditSpaName').value = s.spaName;
+            document.getElementById('admEditSpaPhone').value = s.phone || '';
+            document.getElementById('admEditSpaAddress').value = s.address || '';
+            document.getElementById('admEditSpaStatus').value = s.status || 'active';
+            openModal('adminEditSpaModal');
+        }
+
+        async function submitAdminUpdateSpa(e) {
+            e.preventDefault();
+            const payload = {
+                spaId: parseInt(document.getElementById('admEditSpaId').value),
+                spaName: document.getElementById('admEditSpaName').value,
+                phone: document.getElementById('admEditSpaPhone').value,
+                address: document.getElementById('admEditSpaAddress').value,
+                status: document.getElementById('admEditSpaStatus').value
+            };
+            const res = await fetch('/Admin/UpdateSpa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            showToast(result.message || '', result.success ? 'Thành công' : 'Lỗi');
+            if (result.success) {
+                closeModal('adminEditSpaModal');
+                loadAdminSystemOverview();
+            }
+        }
+
+        async function adminToggleSpaStatus(spaId) {
+            const res = await fetch('/Admin/ToggleSpaStatus', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: spaId })
+            });
+            const result = await res.json();
+            showToast(result.message || '', result.success ? 'Cập nhật' : 'Lỗi');
+            if (result.success) loadAdminSystemOverview();
+        }
+
+        async function adminDeleteSpa(spaId, spaName) {
+            if (!confirm(`Xác nhận xóa quán Spa "${spaName}" (#${spaId}) khỏi hệ thống?`)) return;
+            const res = await fetch('/Admin/DeleteSpa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: spaId })
+            });
+            const result = await res.json();
+            showToast(result.message || '', result.success ? 'Đã xóa' : 'Lỗi');
+            if (result.success) loadAdminSystemOverview();
+        }
 
         // =========================================================================
         // PHÂN HỆ: TRANG TỔNG QUAN (DASHBOARD ANALYTICS, CALENDAR & REAL-TIME AUDIT)

@@ -10,7 +10,7 @@ namespace CRM_V2.Controllers;
 /// Phân quyền nghiêm ngặt: Chỉ tài khoản Quản trị viên (Admin) và Chủ Spa (Owner) được phép truy cập.
 /// Nếu Nhân viên (Staff) gọi API này, hệ thống lập tức chặn với mã 403 Forbidden.
 /// </summary>
-[Authorize(Roles = "Admin,Owner,admin,owner")]
+[Authorize(Roles = "Admin,Owner")]
 public class AuditLogController : Controller
 {
     private readonly IAuditLogService _auditLogService;
@@ -22,12 +22,24 @@ public class AuditLogController : Controller
         _logger = logger;
     }
 
+    private bool IsForbiddenForCurrentUser()
+    {
+        if (User?.Identity?.IsAuthenticated != true)
+            return false;
+
+        return !User.IsInRole("Admin") &&
+               !User.IsInRole("Owner") &&
+               !User.IsInRole("admin") &&
+               !User.IsInRole("owner");
+    }
+
     /// <summary>
     /// GET /AuditLog/GetLogs?employeeId={ID}&moduleName={Module}&actionType={Action}&fromDate={Date}&toDate={Date}&search={Keyword}
     /// Nếu employeeId bỏ trống -> trả về toàn bộ nhật ký của tất cả nhân viên (mới nhất lên đầu).
     /// Nếu truyền employeeId -> chỉ lọc riêng nhật ký của nhân viên đó.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetLogs(
         long? employeeId = null,
         string? moduleName = null,
@@ -36,6 +48,15 @@ public class AuditLogController : Controller
         DateTime? toDate = null,
         string? search = null)
     {
+        if (IsForbiddenForCurrentUser())
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                success = false,
+                code = "FORBIDDEN",
+                message = "403 Forbidden: Chỉ tài khoản Chủ Spa (Owner) hoặc Quản trị viên (Admin) mới được phép truy cập Nhật ký hệ thống!"
+            });
+        }
         try
         {
             var result = await _auditLogService.GetLogsAsync(
@@ -64,6 +85,7 @@ public class AuditLogController : Controller
     /// Xuất danh sách nhật ký thao tác ra file Excel/CSV (Chỉ dành cho Admin/Owner)
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     [AuditLog("REPORTS", "EXPORT", "Nhân viên {Actor} xuất báo cáo Nhật ký thao tác hệ thống (Audit Logs) ra file CSV/Excel.")]
     public async Task<IActionResult> ExportCsv(
         long? employeeId = null,
@@ -73,6 +95,15 @@ public class AuditLogController : Controller
         DateTime? toDate = null,
         string? search = null)
     {
+        if (IsForbiddenForCurrentUser())
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                success = false,
+                code = "FORBIDDEN",
+                message = "403 Forbidden: Chỉ tài khoản Chủ Spa (Owner) hoặc Quản trị viên (Admin) mới được phép xuất Nhật ký hệ thống!"
+            });
+        }
         var result = await _auditLogService.GetLogsAsync(
             employeeId,
             moduleName,

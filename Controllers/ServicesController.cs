@@ -1,10 +1,14 @@
 using CRM_V2.Data;
 using CRM_V2.Models;
+using CRM_V2.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Controllers;
 
+[Authorize]
 public class ServicesController : Controller
 {
     private readonly ApplicationDbContext _context;
@@ -16,6 +20,25 @@ public class ServicesController : Controller
         _logger = logger;
     }
 
+    private bool IsCurrentUserStaffOnly()
+    {
+        if (User?.Identity?.IsAuthenticated != true)
+            return false;
+
+        return !User.IsInRole("Admin") &&
+               !User.IsInRole("Owner") &&
+               !User.IsInRole("admin") &&
+               !User.IsInRole("owner");
+    }
+
+    private ObjectResult ForbiddenStaffResult() =>
+        StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            code = "FORBIDDEN",
+            message = "403 Forbidden: Tài khoản Nhân viên (Staff) không có quyền Thêm / Sửa / Xóa dịch vụ!"
+        });
+
     /// <summary>
     /// GET /Services/GetAllActive
     /// Lấy danh sách tất cả dịch vụ có is_active = 1 dạng JSON kèm danh mục nhóm dịch vụ
@@ -25,9 +48,28 @@ public class ServicesController : Controller
     {
         try
         {
-            var services = await _context.Services
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = true,
+                    isUnassignedStaff = true,
+                    data = Array.Empty<object>(),
+                    categories = Array.Empty<object>()
+                });
+            }
+
+            var servicesQuery = _context.Services
                 .AsNoTracking()
-                .Where(s => s.IsActive)
+                .Where(s => s.IsActive);
+
+            if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                servicesQuery = servicesQuery.Where(s => s.SpaId == tenant.SpaId.Value);
+            }
+
+            var services = await servicesQuery
                 .OrderBy(s => s.ServiceId)
                 .Select(s => new
                 {
@@ -81,8 +123,12 @@ public class ServicesController : Controller
     /// Thêm mới dịch vụ từ Modal UI vào bảng services (và đồng bộ danh mục mới vào service_categories)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Create([FromBody] ServiceUpsertDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || string.IsNullOrWhiteSpace(dto.ServiceName))
             return BadRequest(new { success = false, message = "Vui lòng nhập tên dịch vụ." });
 
@@ -94,6 +140,12 @@ public class ServicesController : Controller
 
         try
         {
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return BadRequest(new { success = false, message = "Bạn chưa tham gia đội ngũ Spa nào." });
+            }
+
             string categoryName = string.IsNullOrWhiteSpace(dto.CategoryName)
                 ? "Chăm sóc da"
                 : dto.CategoryName.Trim();
@@ -128,6 +180,7 @@ public class ServicesController : Controller
                 IconClass = iconClass,
                 BgColor = bgColor,
                 IsActive = true,
+                SpaId = tenant.SpaId,
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             };
@@ -156,8 +209,12 @@ public class ServicesController : Controller
     /// Chỉnh sửa thông tin tên, giá, thời lượng, danh mục, icon, màu sắc của dịch vụ
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Update([FromBody] ServiceUpsertDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || dto.ServiceId <= 0)
             return BadRequest(new { success = false, message = "Mã dịch vụ không hợp lệ." });
 
@@ -172,7 +229,13 @@ public class ServicesController : Controller
 
         try
         {
-            var service = await _context.Services.FindAsync(dto.ServiceId);
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+                return Forbid();
+
+            var service = await _context.Services.FirstOrDefaultAsync(s =>
+                s.ServiceId == dto.ServiceId &&
+                (tenant.IsAdminOrUnscoped || s.SpaId == tenant.SpaId));
             if (service == null)
                 return NotFound(new { success = false, message = "Không tìm thấy dịch vụ cần chỉnh sửa." });
 
@@ -231,11 +294,21 @@ public class ServicesController : Controller
     /// Soft Delete: Cập nhật is_active = 0 thay vì xóa vật lý khỏi DB để bảo toàn lịch sử hóa đơn/lịch hẹn cũ
     /// </summary>
     [HttpPost("/Services/Delete/{id:int}")]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Delete(int id)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         try
         {
-            var service = await _context.Services.FindAsync(id);
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+                return Forbid();
+
+            var service = await _context.Services.FirstOrDefaultAsync(s =>
+                s.ServiceId == id &&
+                (tenant.IsAdminOrUnscoped || s.SpaId == tenant.SpaId));
             if (service == null)
                 return NotFound(new { success = false, message = "Không tìm thấy dịch vụ cần xóa." });
 

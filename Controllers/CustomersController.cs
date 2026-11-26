@@ -32,6 +32,25 @@ public class CustomersController : Controller
         _logger = logger;
     }
 
+    private bool IsCurrentUserStaffOnly()
+    {
+        if (User?.Identity?.IsAuthenticated != true)
+            return false;
+
+        return !User.IsInRole("Admin") &&
+               !User.IsInRole("Owner") &&
+               !User.IsInRole("admin") &&
+               !User.IsInRole("owner");
+    }
+
+    private ObjectResult ForbiddenStaffResult() =>
+        StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            code = "FORBIDDEN",
+            message = "403 Forbidden: Tài khoản Nhân viên (Staff) chỉ được phép xem dữ liệu, không có quyền Thêm / Sửa / Xóa khách hàng!"
+        });
+
     /// <summary>
     /// API lấy danh sách khách hàng từ CSDL SQL Server với bộ lọc và tìm kiếm
     /// </summary>
@@ -40,8 +59,25 @@ public class CustomersController : Controller
     {
         try
         {
-            var query = _context.Customers
-                .AsNoTracking()
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = true,
+                    isUnassignedStaff = true,
+                    data = Array.Empty<object>(),
+                    counts = new { all = 0, vip = 0, loyal = 0, newCount = 0, atRisk = 0 }
+                });
+            }
+
+            var baseCustomers = _context.Customers.AsNoTracking().AsQueryable();
+            if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                baseCustomers = baseCustomers.Where(c => c.SpaId == tenant.SpaId.Value);
+            }
+
+            var query = baseCustomers
                 .Include(c => c.RfmScore)
                 .AsQueryable();
 
@@ -87,12 +123,12 @@ public class CustomersController : Controller
                 })
                 .ToListAsync();
 
-            // Thống kê số lượng theo nhóm
-            var allCount = await _context.Customers.CountAsync();
-            var vipCount = await _context.Customers.CountAsync(c => c.CustomerType == "VIP");
-            var loyalCount = await _context.Customers.CountAsync(c => c.CustomerType == "Than_thiet");
-            var newCount = await _context.Customers.CountAsync(c => c.CustomerType == "Moi");
-            var atRiskCount = await _context.Customers.CountAsync(c => c.CustomerType == "Nguy_co" || (c.RfmScore != null && c.RfmScore.SegmentGroup == "AtRisk"));
+            // Thống kê số lượng theo nhóm (cô lập theo spa_id)
+            var allCount = await baseCustomers.CountAsync();
+            var vipCount = await baseCustomers.CountAsync(c => c.CustomerType == "VIP");
+            var loyalCount = await baseCustomers.CountAsync(c => c.CustomerType == "Than_thiet");
+            var newCount = await baseCustomers.CountAsync(c => c.CustomerType == "Moi");
+            var atRiskCount = await baseCustomers.CountAsync(c => c.CustomerType == "Nguy_co" || (c.RfmScore != null && c.RfmScore.SegmentGroup == "AtRisk"));
 
             return Json(new
             {
@@ -140,10 +176,23 @@ public class CustomersController : Controller
     {
         try
         {
-            var customer = await _context.Customers
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new { success = false, message = "Bạn chưa tham gia đội ngũ Spa nào." });
+            }
+
+            var custQuery = _context.Customers
                 .AsNoTracking()
                 .Include(c => c.RfmScore)
-                .FirstOrDefaultAsync(c => c.CustomerId == id);
+                .Where(c => c.CustomerId == id);
+
+            if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                custQuery = custQuery.Where(c => c.SpaId == tenant.SpaId.Value);
+            }
+
+            var customer = await custQuery.FirstOrDefaultAsync();
             if (customer == null)
             {
                 return Json(new { success = false, message = "Không tìm thấy khách hàng." });
@@ -252,11 +301,15 @@ public class CustomersController : Controller
     }
 
     /// <summary>
-    /// Action cập nhật thông tin khách hàng vào SQL Server
+    /// Action cập nhật thông tin khách hàng vào SQL Server (Chỉ Admin, Owner)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Update([FromBody] CustomerEditViewModel model)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (!ModelState.IsValid)
         {
             var errors = ModelState.Values
@@ -274,7 +327,15 @@ public class CustomersController : Controller
 
         try
         {
-            var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == model.CustomerId);
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new { success = false, message = "Bạn chưa tham gia đội ngũ Spa nào nên không thể chỉnh sửa dữ liệu." });
+            }
+
+            var customer = await _context.Customers.FirstOrDefaultAsync(c =>
+                c.CustomerId == model.CustomerId &&
+                (tenant.IsAdminOrUnscoped || c.SpaId == tenant.SpaId));
             if (customer == null)
             {
                 return Json(new
@@ -287,7 +348,8 @@ public class CustomersController : Controller
             // Kiểm tra trùng số điện thoại với khách hàng khác
             var cleanPhone = model.Phone.Trim();
             var phoneConflict = await _context.Customers
-                .AnyAsync(c => c.Phone == cleanPhone && c.CustomerId != model.CustomerId);
+                .AnyAsync(c => c.Phone == cleanPhone && c.CustomerId != model.CustomerId &&
+                               (tenant.IsAdminOrUnscoped || c.SpaId == tenant.SpaId));
 
             if (phoneConflict)
             {
@@ -343,11 +405,26 @@ public class CustomersController : Controller
     }
 
     /// <summary>
-    /// Action nhận dữ liệu form và thêm mới khách hàng vào SQL Server
+    /// Action nhận dữ liệu form và thêm mới khách hàng vào SQL Server (Chỉ Admin, Owner)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Create([FromBody] CustomerCreateViewModel model)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
+        if (MaliciousInputFilter.TryFindMaliciousInputInObject(model, out var field, out _))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                code = "MALICIOUS_INPUT_DETECTED",
+                parameter = field,
+                message = $"Cảnh báo bảo mật: Trường dữ liệu '{field}' chứa mã độc XSS hoặc SQL Injection đã bị hệ thống chặn!"
+            });
+        }
+
         if (!ModelState.IsValid)
         {
             var errors = ModelState.Values
@@ -365,10 +442,20 @@ public class CustomersController : Controller
 
         try
         {
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "Bạn chưa tham gia đội ngũ Spa nào. Vui lòng chờ Chủ Spa gửi lời mời!"
+                });
+            }
+
             // 1. Kiểm tra trùng lặp Số điện thoại (Phone)
             var cleanPhone = model.Phone.Trim();
             var phoneExists = await _context.Customers
-                .AnyAsync(c => c.Phone == cleanPhone);
+                .AnyAsync(c => c.Phone == cleanPhone && (tenant.IsAdminOrUnscoped || c.SpaId == tenant.SpaId));
 
             if (phoneExists)
             {
@@ -379,7 +466,7 @@ public class CustomersController : Controller
                 });
             }
 
-            // 2. Khởi tạo Entity Customer và gán giá trị mặc định CRM
+            // 2. Khởi tạo Entity Customer và gán giá trị mặc định CRM + spa_id = CurrentUserSpaId
             var newCustomer = new Customer
             {
                 FullName = model.FullName.Trim(),
@@ -393,6 +480,7 @@ public class CustomersController : Controller
                 CustomerType = string.IsNullOrWhiteSpace(model.CustomerType) ? "Moi" : model.CustomerType,
                 CustomerStatus = string.IsNullOrWhiteSpace(model.CustomerStatus) ? "Hoat_dong" : model.CustomerStatus,
                 Notes = string.IsNullOrWhiteSpace(model.Notes) ? null : model.Notes.Trim(),
+                SpaId = tenant.SpaId,
 
                 // Các giá trị mặc định CRM Analytics
                 TotalVisits = 0,
@@ -442,11 +530,15 @@ public class CustomersController : Controller
 
     /// <summary>
     /// POST /Customers/Delete
-    /// Xóa vĩnh viễn hồ sơ khách hàng cùng toàn bộ lịch hẹn và tương tác liên quan khỏi SQL Server
+    /// Xóa vĩnh viễn hồ sơ khách hàng cùng toàn bộ lịch hẹn và tương tác liên quan khỏi SQL Server (Chỉ Admin, Owner)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Delete([FromBody] CustomerDeleteDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || dto.CustomerId <= 0)
         {
             return BadRequest(new { success = false, message = "Mã khách hàng không hợp lệ." });
@@ -454,7 +546,15 @@ public class CustomersController : Controller
 
         try
         {
-            var customer = await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == dto.CustomerId);
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Forbid();
+            }
+
+            var customer = await _context.Customers.FirstOrDefaultAsync(c =>
+                c.CustomerId == dto.CustomerId &&
+                (tenant.IsAdminOrUnscoped || c.SpaId == tenant.SpaId));
             if (customer == null)
             {
                 return NotFound(new { success = false, message = "Không tìm thấy hồ sơ khách hàng cần xóa." });
@@ -627,8 +727,12 @@ public class CustomersController : Controller
     /// Tải lên file (.xlsx hoặc .csv), tự động bóc tách 6 cột, tính toán RFM và lưu vào SQL Server (bảng customers & appointments)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ImportFromFile(IFormFile? file)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (file == null || file.Length == 0)
         {
             return BadRequest(new { success = false, message = "Vui lòng chọn một file .xlsx hoặc .csv hợp lệ để tải lên." });
@@ -737,9 +841,19 @@ public class CustomersController : Controller
                 return BadRequest(new { success = false, message = "Không tìm thấy dòng dữ liệu hợp lệ nào trong file. Vui lòng kiểm tra lại nội dung file." });
             }
 
-            // Nạp sẵn danh sách khách hàng và dịch vụ hiện có trong SQL Server để đối chiếu nhanh
-            var existingCustomers = await _context.Customers.ToDictionaryAsync(c => c.Phone, c => c);
-            var existingServices = await _context.Services.ToListAsync();
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return BadRequest(new { success = false, message = "Bạn chưa tham gia đội ngũ Spa nào." });
+            }
+
+            // Nạp sẵn danh sách khách hàng và dịch vụ hiện có trong SQL Server (theo spa_id) để đối chiếu nhanh
+            var existingCustomers = await _context.Customers
+                .Where(c => tenant.IsAdminOrUnscoped || c.SpaId == tenant.SpaId)
+                .ToDictionaryAsync(c => c.Phone, c => c);
+            var existingServices = await _context.Services
+                .Where(s => tenant.IsAdminOrUnscoped || s.SpaId == tenant.SpaId)
+                .ToListAsync();
 
             int newCustomersCount = 0;
             int updatedCustomersCount = 0;
@@ -777,6 +891,7 @@ public class CustomersController : Controller
                         IconClass = "fa-spa",
                         BgColor = "bg-purple-500",
                         IsActive = true,
+                        SpaId = tenant.SpaId,
                         CreatedAt = DateTime.Now,
                         UpdatedAt = DateTime.Now
                     };
@@ -800,6 +915,7 @@ public class CustomersController : Controller
                         LastVisitAt = isNoShow ? null : row.ServiceDate,
                         LastBookingAt = row.ServiceDate,
                         Notes = $"Nhập từ file dữ liệu ({row.ServiceName} - {(isNoShow ? "Bỏ hẹn" : "Hoàn thành")})",
+                        SpaId = tenant.SpaId,
                         CreatedAt = DateTime.Now,
                         UpdatedAt = DateTime.Now
                     };
@@ -869,6 +985,7 @@ public class CustomersController : Controller
                     IsHiddenFromBoard = true, // Lịch sử cũ lưu trong hồ sơ khách hàng, không làm rối bảng Kanban hôm nay
                     HiddenAt = DateTime.Now,
                     Notes = $"Đồng bộ từ file: {item.Row.ServiceName} ({(item.IsNoShow ? "Bỏ hẹn" : "Hoàn thành")})",
+                    SpaId = tenant.SpaId,
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now
                 };

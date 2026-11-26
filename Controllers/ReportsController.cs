@@ -3,9 +3,12 @@ using System.Data.Common;
 using System.Globalization;
 using ClosedXML.Excel;
 using CRM_V2.Data;
+using CRM_V2.Services;
 using CRM_V2.ViewModels;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Controllers;
@@ -23,13 +26,36 @@ public class ReportsController : Controller
         _logger = logger;
     }
 
+    private bool IsForbiddenForCurrentUser()
+    {
+        if (User?.Identity?.IsAuthenticated != true)
+            return false;
+
+        return !User.IsInRole("Admin") &&
+               !User.IsInRole("Owner") &&
+               !User.IsInRole("admin") &&
+               !User.IsInRole("owner");
+    }
+
+    private ObjectResult ForbiddenResult() =>
+        StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            code = "FORBIDDEN",
+            message = "403 Forbidden: Chỉ tài khoản Chủ Spa (Owner) hoặc Quản trị viên (Admin) mới được phép truy cập Báo cáo tài chính & vận hành!"
+        });
+
     /// <summary>
     /// GET /Reports/NoShowRetention
     /// Giao diện Báo cáo Tỉ lệ bỏ hẹn & Khách quay lại theo nhóm khách hàng (Must #3)
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public IActionResult NoShowRetention()
     {
+        if (IsForbiddenForCurrentUser())
+            return ForbiddenResult();
+
         return View();
     }
 
@@ -38,8 +64,12 @@ public class ReportsController : Controller
     /// Gọi Stored Procedure sp_Report_NoShowAndRetentionBySegment và tính toán các chỉ số tổng quan toàn salon.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetNoShowAndRetentionReport(string? fromDate = null, string? toDate = null)
     {
+        if (IsForbiddenForCurrentUser())
+            return ForbiddenResult();
+
         try
         {
             var (start, end) = ResolveCustomDateRange(fromDate, toDate);
@@ -62,8 +92,12 @@ public class ReportsController : Controller
     /// Xuất báo cáo Tỉ lệ bỏ hẹn & Khách quay lại theo nhóm khách hàng ra file Excel (.xlsx) bằng ClosedXML.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ExportNoShowRetentionExcel(string? fromDate = null, string? toDate = null)
     {
+        if (IsForbiddenForCurrentUser())
+            return ForbiddenResult();
+
         try
         {
             var (start, end) = ResolveCustomDateRange(fromDate, toDate);
@@ -93,8 +127,11 @@ public class ReportsController : Controller
     /// theo khoảng thời gian được chọn (today, this_week, this_month, this_quarter, this_year, custom).
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetOverviewData(string period = "this_month", string? fromDate = null, string? toDate = null)
     {
+        if (IsForbiddenForCurrentUser())
+            return ForbiddenResult();
         try
         {
             var (start, end, periodDisplay) = ResolveDateRange(period, fromDate, toDate);
@@ -129,8 +166,11 @@ public class ReportsController : Controller
     /// Xuất báo cáo đa chiều ra file Microsoft Excel (.xlsx) với 4 Sheet hoàn chỉnh bằng ClosedXML
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ExportExcel(string period = "this_month", string? fromDate = null, string? toDate = null)
     {
+        if (IsForbiddenForCurrentUser())
+            return ForbiddenResult();
         try
         {
             var (start, end, periodDisplay) = ResolveDateRange(period, fromDate, toDate);
@@ -229,6 +269,17 @@ public class ReportsController : Controller
 
     private async Task<ReportAggregateData> FetchFullReportDataAsync(DateTime start, DateTime end)
     {
+        var tenant = TenantContext.Resolve(User, _context, HttpContext);
+        if (tenant.IsUnassignedTenantUser)
+        {
+            return new ReportAggregateData();
+        }
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            return await FetchFullReportDataForSpaAsync(tenant.SpaId.Value, start, end);
+        }
+
         var data = new ReportAggregateData();
         var conn = _context.Database.GetDbConnection();
 
@@ -389,6 +440,138 @@ public class ReportsController : Controller
         return data;
     }
 
+    private async Task<ReportAggregateData> FetchFullReportDataForSpaAsync(long spaId, DateTime start, DateTime end)
+    {
+        var data = new ReportAggregateData();
+        var spanDays = Math.Max(1, (end.Date - start.Date).Days + 1);
+        var prevEnd = start.Date.AddDays(-1);
+        var prevStart = prevEnd.AddDays(-spanDays + 1);
+
+        var periodAppts = await _context.Appointments
+            .AsNoTracking()
+            .Include(a => a.Customer)
+            .Include(a => a.Employee)
+                .ThenInclude(u => u!.Role)
+            .Include(a => a.AppointmentServices)
+                .ThenInclude(aps => aps.Service)
+            .Where(a => a.SpaId == spaId && a.AppointmentDate >= start.Date && a.AppointmentDate <= end.Date)
+            .ToListAsync();
+
+        var completedAppts = periodAppts.Where(a => a.Status == "Completed").ToList();
+        decimal totalRev = completedAppts.Sum(a => a.TotalPrice);
+        decimal prevRev = await _context.Appointments
+            .AsNoTracking()
+            .Where(a => a.SpaId == spaId && a.Status == "Completed" && a.AppointmentDate >= prevStart && a.AppointmentDate <= prevEnd)
+            .SumAsync(a => (decimal?)a.TotalPrice) ?? 0m;
+
+        int visits = completedAppts.Count;
+        decimal aov = visits > 0 ? decimal.Round(totalRev / visits, 0) : 0m;
+        decimal deposits = periodAppts.Sum(a => a.DepositAmount);
+        decimal directRev = completedAppts.Where(a => a.BookingSource == "Direct").Sum(a => a.TotalPrice);
+        decimal onlineRev = totalRev - directRev;
+        decimal growth = prevRev > 0 ? decimal.Round((totalRev - prevRev) * 100.0m / prevRev, 1) : 0m;
+
+        data.Kpis.TotalRevenue = totalRev;
+        data.Kpis.FormattedRevenue = totalRev.ToString("N0", VnCulture) + "đ";
+        data.Kpis.PreviousRevenue = prevRev;
+        data.Kpis.FormattedPreviousRevenue = prevRev.ToString("N0", VnCulture) + "đ";
+        data.Kpis.GrowthRatePercentage = growth;
+        data.Kpis.IsGrowthPositive = growth >= 0;
+        data.Kpis.TotalCompletedVisits = visits;
+        data.Kpis.AOV = aov;
+        data.Kpis.FormattedAov = aov.ToString("N0", VnCulture) + "đ";
+        data.Kpis.TotalDeposits = deposits;
+        data.Kpis.FormattedDeposits = deposits.ToString("N0", VnCulture) + "đ";
+        data.Kpis.DirectRevenue = directRev;
+        data.Kpis.OnlineRevenue = onlineRev;
+
+        for (var dt = start.Date; dt <= end.Date; dt = dt.AddDays(1))
+        {
+            var dayComp = completedAppts.Where(a => a.AppointmentDate.Date == dt).ToList();
+            data.Trend.Labels.Add(dt.ToString("dd/MM"));
+            data.Trend.FullLabels.Add(dt.ToString("dd/MM/yyyy"));
+            data.Trend.Revenues.Add(dayComp.Sum(a => a.TotalPrice));
+            data.Trend.Visits.Add(dayComp.Count);
+        }
+
+        // Top Services
+        var allSrvItems = completedAppts.SelectMany(a => a.AppointmentServices).Where(s => s.Service != null).ToList();
+        decimal totalSrvRev = Math.Max(1m, allSrvItems.Sum(x => x.Price));
+        foreach (var grp in allSrvItems.GroupBy(x => x.ServiceId).OrderByDescending(g => g.Sum(x => x.Price)).Take(6))
+        {
+            var first = grp.First().Service!;
+            var rev = grp.Sum(x => x.Price);
+            data.Services.Add(new ServiceReportItem
+            {
+                ServiceId = first.ServiceId,
+                ServiceName = first.ServiceName,
+                CategoryName = first.CategoryName,
+                OrderCount = grp.Count(),
+                TotalRevenue = rev,
+                FormattedRevenue = rev.ToString("N0", VnCulture) + "đ",
+                Percentage = decimal.Round(rev * 100.0m / totalSrvRev, 1)
+            });
+        }
+
+        // Customer Growth & Tiers
+        var spaCustomers = await _context.Customers
+            .AsNoTracking()
+            .Where(c => c.SpaId == spaId && c.CustomerStatus == "Hoat_dong")
+            .ToListAsync();
+
+        data.Kpis.NewCustomers = spaCustomers.Count(c => c.CreatedAt.Date >= start.Date && c.CreatedAt.Date <= end.Date);
+        data.Kpis.ReturningCustomers = spaCustomers.Count(c => c.TotalVisits > 1);
+        data.Kpis.TotalActiveCustomers = spaCustomers.Count;
+        data.Kpis.RetentionRatePercentage = spaCustomers.Count > 0
+            ? decimal.Round(data.Kpis.ReturningCustomers * 100.0m / spaCustomers.Count, 1)
+            : 0m;
+
+        data.BookingStats.TotalBooked = periodAppts.Count;
+        data.BookingStats.CompletedCount = visits;
+        data.BookingStats.CancelledCount = periodAppts.Count(a => a.Status == "Cancelled");
+        data.BookingStats.NoShowCount = periodAppts.Count(a => a.Status == "NoShow");
+        data.BookingStats.CancellationRatePercentage = periodAppts.Count > 0
+            ? decimal.Round((data.BookingStats.CancelledCount + data.BookingStats.NoShowCount) * 100.0m / periodAppts.Count, 1)
+            : 0m;
+
+        foreach (var tierGrp in spaCustomers.GroupBy(c => c.CustomerType))
+        {
+            data.CustomerTiers.Add(new CustomerTierItem
+            {
+                TierName = tierGrp.Key,
+                CustomerCount = tierGrp.Count(),
+                TotalSpent = tierGrp.Sum(c => c.TotalSpent)
+            });
+        }
+
+        // Staff Performance
+        var spaStaff = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Where(u => u.SpaId == spaId && u.Status == "active")
+            .ToListAsync();
+
+        foreach (var u in spaStaff)
+        {
+            var served = completedAppts.Where(a => a.EmployeeId == u.UserId).ToList();
+            var sRev = served.Sum(a => a.TotalPrice);
+            data.Staff.Add(new StaffPerformanceItem
+            {
+                UserId = u.UserId,
+                FullName = u.FullName,
+                AvatarUrl = u.AvatarUrl ?? "",
+                RoleName = u.Role?.RoleName ?? "KTV",
+                AppointmentsServed = served.Count,
+                TotalRevenueGenerated = sRev,
+                FormattedRevenue = sRev.ToString("N0", VnCulture) + "đ",
+                Rating = 5.0m
+            });
+        }
+
+        data.Staff = data.Staff.OrderByDescending(s => s.TotalRevenueGenerated).ToList();
+        return data;
+    }
+
     private static (DateTime Start, DateTime End) ResolveCustomDateRange(string? fromDate, string? toDate)
     {
         var today = DateTime.Today;
@@ -416,40 +599,115 @@ public class ReportsController : Controller
             FormattedDateRange = $"{start:dd/MM/yyyy} - {end:dd/MM/yyyy}"
         };
 
-        var conn = _context.Database.GetDbConnection();
-        if (conn.State != ConnectionState.Open)
+        var tenant = TenantContext.Resolve(User, _context, HttpContext);
+        if (tenant.IsUnassignedTenantUser)
         {
-            await conn.OpenAsync();
+            return response;
         }
 
-        using (var cmd = conn.CreateCommand())
+        if (_context.Database.IsRelational())
         {
-            cmd.CommandText = "dbo.sp_Report_NoShowAndRetentionBySegment";
-            cmd.CommandType = CommandType.StoredProcedure;
-            AddParam(cmd, "@FromDate", start.Date);
-            AddParam(cmd, "@ToDate", end.Date);
-
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            var conn = _context.Database.GetDbConnection();
+            if (conn.State != ConnectionState.Open)
             {
-                var rev = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
-                var item = new SegmentNoShowRetentionDto
+                await conn.OpenAsync();
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "dbo.sp_Report_NoShowAndRetentionBySegment";
+                cmd.CommandType = CommandType.StoredProcedure;
+                AddParam(cmd, "@FromDate", start.Date);
+                AddParam(cmd, "@ToDate", end.Date);
+                AddParam(cmd, "@SpaId", !tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue ? (object)tenant.SpaId.Value : DBNull.Value);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
                 {
-                    SegmentCode = reader.IsDBNull(0) ? "" : reader.GetString(0),
-                    SegmentName = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    TotalCustomers = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
-                    ReturningCustomers = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
-                    RetentionRate = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
-                    TotalAppointments = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
-                    CompletedCount = reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
-                    NoShowCount = reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
-                    CancelledCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
-                    NoShowRate = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9),
+                    var rev = reader.IsDBNull(10) ? 0m : reader.GetDecimal(10);
+                    var item = new SegmentNoShowRetentionDto
+                    {
+                        SegmentCode = reader.IsDBNull(0) ? "" : reader.GetString(0),
+                        SegmentName = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                        TotalCustomers = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+                        ReturningCustomers = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                        RetentionRate = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
+                        TotalAppointments = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                        CompletedCount = reader.IsDBNull(6) ? 0 : reader.GetInt32(6),
+                        NoShowCount = reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
+                        CancelledCount = reader.IsDBNull(8) ? 0 : reader.GetInt32(8),
+                        NoShowRate = reader.IsDBNull(9) ? 0m : reader.GetDecimal(9),
+                        ActualRevenue = rev,
+                        FormattedRevenue = rev.ToString("N0", VnCulture) + "đ"
+                    };
+
+                    response.Segments.Add(item);
+                }
+            }
+        }
+        else
+        {
+            // Fallback EF Core LINQ cho môi trường Unit Test (InMemoryDbContext)
+            var catalog = new (string Code, string Name)[]
+            {
+                ("VIP", "Khách hàng VIP"),
+                ("Than_thiet", "Khách hàng Thân thiết"),
+                ("Moi", "Khách hàng Mới"),
+                ("Nguy_co", "Khách Nguy cơ rời bỏ")
+            };
+
+            var activeCustomers = await _context.Customers
+                .Include(c => c.RfmScore)
+                .Where(c => c.CustomerStatus == "Hoat_dong" && (tenant.IsAdminOrUnscoped || c.SpaId == tenant.SpaId))
+                .ToListAsync();
+
+            var periodAppointments = await _context.Appointments
+                .Where(a => a.AppointmentDate >= start.Date && a.AppointmentDate <= end.Date && (tenant.IsAdminOrUnscoped || a.SpaId == tenant.SpaId))
+                .ToListAsync();
+
+            static string NormalizeSegment(Models.Customer c)
+            {
+                if (string.Equals(c.CustomerType, "VIP", StringComparison.OrdinalIgnoreCase) || c.RfmScore?.SegmentGroup == "VIP")
+                    return "VIP";
+                if (string.Equals(c.CustomerType, "Than_thiet", StringComparison.OrdinalIgnoreCase) || c.RfmScore?.SegmentGroup == "Loyal")
+                    return "Than_thiet";
+                if (string.Equals(c.CustomerType, "Nguy_co", StringComparison.OrdinalIgnoreCase) || c.RfmScore?.SegmentGroup == "AtRisk")
+                    return "Nguy_co";
+                return "Moi";
+            }
+
+            foreach (var (code, name) in catalog)
+            {
+                var segCusts = activeCustomers.Where(c => NormalizeSegment(c) == code).ToList();
+                var custIds = segCusts.Select(c => c.CustomerId).ToHashSet();
+                var segAppts = periodAppointments.Where(a => custIds.Contains(a.CustomerId)).ToList();
+
+                int totalCust = segCusts.Count;
+                int returningCust = segCusts.Count(c => c.TotalVisits > 1);
+                decimal retRate = totalCust > 0 ? decimal.Round(returningCust * 100.0m / totalCust, 2) : 0m;
+
+                int totalAppt = segAppts.Count;
+                int compCount = segAppts.Count(a => a.Status == "Completed");
+                int noShowCount = segAppts.Count(a => a.Status == "NoShow");
+                int cancCount = segAppts.Count(a => a.Status == "Cancelled");
+                decimal nsRate = totalAppt > 0 ? decimal.Round(noShowCount * 100.0m / totalAppt, 2) : 0m;
+                decimal rev = segAppts.Where(a => a.Status == "Completed").Sum(a => a.TotalPrice);
+
+                response.Segments.Add(new SegmentNoShowRetentionDto
+                {
+                    SegmentCode = code,
+                    SegmentName = name,
+                    TotalCustomers = totalCust,
+                    ReturningCustomers = returningCust,
+                    RetentionRate = retRate,
+                    TotalAppointments = totalAppt,
+                    CompletedCount = compCount,
+                    NoShowCount = noShowCount,
+                    CancelledCount = cancCount,
+                    NoShowRate = nsRate,
                     ActualRevenue = rev,
                     FormattedRevenue = rev.ToString("N0", VnCulture) + "đ"
-                };
-
-                response.Segments.Add(item);
+                });
             }
         }
 
@@ -490,9 +748,7 @@ public class ReportsController : Controller
 
     private static void AddParam(DbCommand cmd, string name, object value)
     {
-        var p = cmd.CreateParameter();
-        p.ParameterName = name;
-        p.Value = value;
+        var p = new SqlParameter(name, value);
         cmd.Parameters.Add(p);
     }
 

@@ -44,4 +44,10 @@ public class AutomationRule
 
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
+
+    [Column("spa_id")]
+    public long? SpaId { get; set; }
+
+    [ForeignKey(nameof(SpaId))]
+    public virtual Spa? Spa { get; set; }
 }

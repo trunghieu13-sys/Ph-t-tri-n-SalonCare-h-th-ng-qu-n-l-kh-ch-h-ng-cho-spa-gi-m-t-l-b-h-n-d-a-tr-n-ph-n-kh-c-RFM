@@ -42,4 +42,10 @@ public class Notification
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [Column("spa_id")]
+    public long? SpaId { get; set; }
+
+    [ForeignKey(nameof(SpaId))]
+    public virtual Spa? Spa { get; set; }
 }

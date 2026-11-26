@@ -41,6 +41,12 @@ public class User
     [ForeignKey(nameof(RoleId))]
     public virtual Role? Role { get; set; }
 
+    [Column("spa_id")]
+    public long? SpaId { get; set; }
+
+    [ForeignKey(nameof(SpaId))]
+    public virtual Spa? Spa { get; set; }
+
     [MaxLength(100)]
     [Column("specialty")]
     public string? Specialty { get; set; }

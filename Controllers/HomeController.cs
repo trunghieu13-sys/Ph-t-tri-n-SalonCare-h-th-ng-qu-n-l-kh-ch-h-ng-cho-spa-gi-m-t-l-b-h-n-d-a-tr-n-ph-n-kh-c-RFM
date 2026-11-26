@@ -1,7 +1,9 @@
+using CRM_V2.Data;
 using CRM_V2.Services;
 using CRM_V2.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Controllers;
 
@@ -9,20 +11,49 @@ namespace CRM_V2.Controllers;
 public class HomeController : Controller
 {
     private readonly IDashboardService _dashboardService;
+    private readonly IStaffService _staffService;
+    private readonly ApplicationDbContext _context;
     private readonly ILogger<HomeController> _logger;
 
-    public HomeController(IDashboardService dashboardService, ILogger<HomeController> logger)
+    public HomeController(
+        IDashboardService dashboardService,
+        IStaffService staffService,
+        ApplicationDbContext context,
+        ILogger<HomeController> logger)
     {
         _dashboardService = dashboardService;
+        _staffService = staffService;
+        _context = context;
         _logger = logger;
     }
 
     public async Task<IActionResult> Index()
     {
+        var tenant = TenantContext.Resolve(User, _context, HttpContext);
+        var pendingInvitations = tenant.UserId.HasValue && !tenant.IsAdminOrUnscoped
+            ? await _staffService.GetMyPendingInvitationsAsync(tenant.UserId.Value)
+            : new List<MyInvitationDto>();
+        string? spaName = null;
+        if (tenant.SpaId.HasValue)
+        {
+            spaName = await _context.Spas
+                .AsNoTracking()
+                .Where(s => s.SpaId == tenant.SpaId.Value)
+                .Select(s => s.SpaName)
+                .FirstOrDefaultAsync();
+        }
+
         var summary = await _dashboardService.GetSummaryDataAsync();
 
         var viewModel = new DashboardViewModel
         {
+            IsUnassignedStaff = tenant.IsUnassignedTenantUser,
+            CurrentSpaId = tenant.SpaId,
+            CurrentSpaName = spaName,
+            PendingInvitations = pendingInvitations,
+            UnassignedBannerMessage = tenant.IsUnassignedTenantUser
+                ? "Bạn chưa tham gia đội ngũ Spa nào. Vui lòng chờ Chủ Spa gửi lời mời hoặc kiểm tra mục Lời mời của tôi."
+                : null,
             TotalCustomers = summary.Kpis.TotalCustomers,
             CustomerGrowthPercentage = summary.Kpis.CustomerGrowth,
             TodayAppointments = summary.Kpis.TodayAppointments,

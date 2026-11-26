@@ -13,6 +13,10 @@
     var userAvatar = User.FindFirst("AvatarUrl")?.Value ?? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150";
     var userEmail = User.FindFirst(ClaimTypes.Email)?.Value ?? "";
     var userPhone = User.FindFirst("Phone")?.Value ?? "";
+    var isAdmin = User.IsInRole("Admin") || User.IsInRole("admin");
+    var isOwner = !isAdmin && (User.IsInRole("Owner") || User.IsInRole("owner"));
+    var isAdminOrOwner = isAdmin || isOwner;
+    var isStaffOnly = !isAdminOrOwner;
 }
 <!DOCTYPE html>
 <html lang="vi" class="dark">
@@ -197,7 +201,7 @@
                     </div>
                 </div>
 
-                <!-- Navigation Items -->
+                <!-- Navigation Items (Phân quyền chặt chẽ theo Admin / Owner / Staff) -->
                 <nav class="p-4 space-y-1.5 flex-1" id="navContainer">
                     <button data-view="dashboardView" title="Tổng quan" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/20 text-purple-300 font-medium border border-purple-500/30 shadow-lg shadow-purple-900/20 transition-all">
                         <i class="fa-solid fa-house text-purple-400 w-5 text-center shrink-0"></i>
@@ -207,43 +211,53 @@
                         <i class="fa-solid fa-users w-5 text-center shrink-0"></i>
                         <span class="sidebar-text">Khách hàng</span>
                     </button>
-                    <button data-view="rfmSegmentationView" title="Phân khúc RFM" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-layer-group w-5 text-center shrink-0 text-pink-400"></i>
-                        <span class="sidebar-text">Phân khúc RFM</span>
-                    </button>
-                    <button data-view="rfmNotificationsView" title="Nhật ký nhắc lịch" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-bell-concierge w-5 text-center shrink-0 text-cyan-400"></i>
-                        <span class="sidebar-text">Nhật ký nhắc lịch</span>
-                    </button>
+                    @if (isAdminOrOwner)
+                    {
+                        <button data-view="rfmSegmentationView" title="Phân khúc RFM" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-layer-group w-5 text-center shrink-0 text-pink-400"></i>
+                            <span class="sidebar-text">Phân khúc RFM</span>
+                        </button>
+                        <button data-view="rfmNotificationsView" title="Nhật ký nhắc lịch" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-bell-concierge w-5 text-center shrink-0 text-cyan-400"></i>
+                            <span class="sidebar-text">Nhật ký nhắc lịch</span>
+                        </button>
+                    }
                     <button data-view="appointmentsView" title="Lịch hẹn" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
                         <i class="fa-regular fa-calendar-check w-5 text-center shrink-0"></i>
                         <span class="sidebar-text">Lịch hẹn</span>
                     </button>
-                    <button data-view="servicesView" title="Dịch vụ" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-ticket w-5 text-center shrink-0"></i>
-                        <span class="sidebar-text">Dịch vụ</span>
-                    </button>
-                    <button data-view="customerCareView" title="Chăm sóc khách hàng" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-headset w-5 text-center shrink-0"></i>
-                        <span class="sidebar-text">Chăm sóc KH</span>
-                    </button>
-                    <button data-view="reportsView" title="Báo cáo" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-chart-line w-5 text-center shrink-0"></i>
-                        <span class="sidebar-text">Báo cáo</span>
-                    </button>
-                    <button data-view="staffView" title="Nhân viên" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-user-group w-5 text-center shrink-0"></i>
-                        <span class="sidebar-text">Nhân viên</span>
-                    </button>
-                    <button data-view="settingsView" title="Cài đặt" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
-                        <i class="fa-solid fa-gear w-5 text-center shrink-0"></i>
-                        <span class="sidebar-text">Cài đặt</span>
-                    </button>
-                    @if (User.IsInRole("Owner") || User.IsInRole("Admin") || User.IsInRole("owner") || User.IsInRole("admin"))
+                    @if (isAdminOrOwner)
                     {
+                        <button data-view="servicesView" title="Dịch vụ" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-ticket w-5 text-center shrink-0"></i>
+                            <span class="sidebar-text">Dịch vụ</span>
+                        </button>
+                        <button data-view="customerCareView" title="Chăm sóc khách hàng" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-headset w-5 text-center shrink-0"></i>
+                            <span class="sidebar-text">Chăm sóc KH</span>
+                        </button>
+                        <button data-view="reportsView" title="Báo cáo" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-chart-line w-5 text-center shrink-0"></i>
+                            <span class="sidebar-text">Báo cáo</span>
+                        </button>
+                        <button data-view="staffView" title="Nhân viên" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-user-group w-5 text-center shrink-0"></i>
+                            <span class="sidebar-text">Nhân viên</span>
+                        </button>
+                        <button data-view="settingsView" title="Cài đặt" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-gear w-5 text-center shrink-0"></i>
+                            <span class="sidebar-text">Cài đặt</span>
+                        </button>
                         <button data-view="auditLogsView" title="Nhật ký thao tác" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
                             <i class="fa-solid fa-shield-halved w-5 text-center shrink-0 text-amber-400"></i>
                             <span class="sidebar-text">Nhật ký thao tác</span>
+                        </button>
+                    }
+                    @if (isAdmin)
+                    {
+                        <button data-view="adminSystemView" title="Quản trị hệ thống" class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+                            <i class="fa-solid fa-crown w-5 text-center shrink-0 text-rose-400"></i>
+                            <span class="sidebar-text">Quản trị hệ thống</span>
                         </button>
                     }
                 </nav>
@@ -318,10 +332,13 @@
 
                 <!-- Header Actions -->
                 <div class="flex items-center space-x-3">
-                    <button id="quickBookingBtn" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
-                        <i class="fa-solid fa-plus text-xs"></i>
-                        <span class="hidden sm:inline">Đặt lịch mới</span>
-                    </button>
+                    @if (isAdminOrOwner)
+                    {
+                        <button id="quickBookingBtn" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-purple-600/30 transition">
+                            <i class="fa-solid fa-plus text-xs"></i>
+                            <span class="hidden sm:inline">Đặt lịch mới</span>
+                        </button>
+                    }
 
                     <!-- Trung Tâm Thông Báo (Notification Center) -->
                     <div class="relative" id="notificationBellContainer">

@@ -67,9 +67,20 @@ public class AuditLogService : IAuditLogService
                 }
             }
 
+            var tenant = TenantContext.Resolve(httpContext?.User, _context, httpContext);
+            long? resolvedSpaId = tenant.SpaId;
+            if (!resolvedSpaId.HasValue && resolvedUserId > 0)
+            {
+                resolvedSpaId = await _context.Users.AsNoTracking()
+                    .Where(u => u.UserId == resolvedUserId)
+                    .Select(u => u.SpaId)
+                    .FirstOrDefaultAsync();
+            }
+
             var entry = new AuditLog
             {
                 UserId = resolvedUserId,
+                SpaId = resolvedSpaId,
                 ModuleName = moduleName.ToUpperInvariant(),
                 ActionType = actionType.ToUpperInvariant(),
                 Description = description,
@@ -96,16 +107,33 @@ public class AuditLogService : IAuditLogService
         string? search = null,
         int limit = 200)
     {
-        // 1. Lấy danh sách toàn bộ nhân viên để hiển thị trong Dropdown lọc nhân viên
-        var allUsers = await _context.Users
+        var httpContext = _httpContextAccessor.HttpContext;
+        var tenant = TenantContext.Resolve(httpContext?.User, _context, httpContext);
+        if (tenant.IsUnassignedTenantUser)
+        {
+            return new AuditLogQueryResultDto { Success = true };
+        }
+
+        // 1. Lấy danh sách toàn bộ nhân viên (thuộc Spa hiện tại) để hiển thị trong Dropdown lọc nhân viên
+        var usersQuery = _context.Users
             .AsNoTracking()
             .Include(u => u.Role)
+            .AsQueryable();
+
+        var logsBaseQuery = _context.AuditLogs.AsNoTracking().AsQueryable();
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            usersQuery = usersQuery.Where(u => u.SpaId == tenant.SpaId.Value);
+            logsBaseQuery = logsBaseQuery.Where(l => l.SpaId == tenant.SpaId.Value || (l.User != null && l.User.SpaId == tenant.SpaId.Value));
+        }
+
+        var allUsers = await usersQuery
             .OrderBy(u => u.RoleId)
             .ThenBy(u => u.FullName)
             .ToListAsync();
 
-        var logCountsByUser = await _context.AuditLogs
-            .AsNoTracking()
+        var logCountsByUser = await logsBaseQuery
             .GroupBy(l => l.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.UserId, x => x.Count);
@@ -130,12 +158,17 @@ public class AuditLogService : IAuditLogService
             };
         }).ToList();
 
-        // 2. Xây dựng truy vấn lọc Nhật ký thao tác
+        // 2. Xây dựng truy vấn lọc Nhật ký thao tác (cô lập theo spa_id)
         var query = _context.AuditLogs
             .AsNoTracking()
             .Include(l => l.User)
                 .ThenInclude(u => u!.Role)
             .AsQueryable();
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            query = query.Where(l => l.SpaId == tenant.SpaId.Value || (l.User != null && l.User.SpaId == tenant.SpaId.Value));
+        }
 
         if (employeeId.HasValue && employeeId.Value > 0)
         {

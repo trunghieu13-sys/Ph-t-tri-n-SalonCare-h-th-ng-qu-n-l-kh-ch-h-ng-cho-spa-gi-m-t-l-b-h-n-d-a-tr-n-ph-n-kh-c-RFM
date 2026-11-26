@@ -22,6 +22,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<Spa> Spas => Set<Spa>();
+    public DbSet<SpaInvitation> SpaInvitations => Set<SpaInvitation>();
     public DbSet<ServiceCategory> ServiceCategories => Set<ServiceCategory>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
@@ -95,6 +97,67 @@ public class ApplicationDbContext : DbContext
                   .WithMany(r => r.Users)
                   .HasForeignKey(u => u.RoleId)
                   .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(u => u.Spa)
+                  .WithMany(s => s.Users)
+                  .HasForeignKey(u => u.SpaId)
+                  .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ==========================================
+        // 2B. CẤU HÌNH BẢNG SPAS & SPA_INVITATIONS (MULTI-TENANT)
+        // ==========================================
+        modelBuilder.Entity<Spa>(entity =>
+        {
+            entity.ToTable("spas");
+            entity.HasKey(s => s.SpaId);
+
+            entity.HasIndex(s => s.OwnerUserId)
+                  .HasDatabaseName("IX_spas_owner_user_id");
+
+            entity.HasIndex(s => s.Status)
+                  .HasDatabaseName("IX_spas_status");
+
+            entity.Property(s => s.SpaName).IsRequired().HasMaxLength(150);
+            entity.Property(s => s.Address).HasMaxLength(255);
+            entity.Property(s => s.Phone).HasMaxLength(15);
+            entity.Property(s => s.Status).HasDefaultValue("active").HasMaxLength(20);
+            entity.Property(s => s.CreatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(s => s.OwnerUser)
+                  .WithMany()
+                  .HasForeignKey(s => s.OwnerUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SpaInvitation>(entity =>
+        {
+            entity.ToTable("spa_invitations");
+            entity.HasKey(si => si.InvitationId);
+
+            entity.HasIndex(si => si.SpaId)
+                  .HasDatabaseName("IX_spa_invitations_spa_id");
+
+            entity.HasIndex(si => new { si.InviteeUserId, si.Status })
+                  .HasDatabaseName("IX_spa_invitations_invitee_status");
+
+            entity.Property(si => si.Status).HasDefaultValue("Pending").HasMaxLength(20);
+            entity.Property(si => si.CreatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(si => si.Spa)
+                  .WithMany(s => s.Invitations)
+                  .HasForeignKey(si => si.SpaId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(si => si.InviterUser)
+                  .WithMany()
+                  .HasForeignKey(si => si.InviterUserId)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(si => si.InviteeUser)
+                  .WithMany()
+                  .HasForeignKey(si => si.InviteeUserId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ==========================================
@@ -126,6 +189,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.NoShowCount).HasDefaultValue(0);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(e => e.Spa)
+                  .WithMany()
+                  .HasForeignKey(e => e.SpaId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ==========================================
@@ -159,6 +227,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(s => s.IsActive).HasDefaultValue(true);
             entity.Property(s => s.CreatedAt).HasDefaultValueSql("GETDATE()");
             entity.Property(s => s.UpdatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(s => s.Spa)
+                  .WithMany()
+                  .HasForeignKey(s => s.SpaId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ==========================================
@@ -199,6 +272,11 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(a => a.Creator)
                   .WithMany()
                   .HasForeignKey(a => a.CreatedBy)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(a => a.Spa)
+                  .WithMany()
+                  .HasForeignKey(a => a.SpaId)
                   .OnDelete(DeleteBehavior.NoAction);
         });
 
@@ -242,6 +320,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(r => r.IsActive).HasDefaultValue(true);
             entity.Property(r => r.CreatedAt).HasDefaultValueSql("GETDATE()");
             entity.Property(r => r.UpdatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(r => r.Spa)
+                  .WithMany()
+                  .HasForeignKey(r => r.SpaId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ==========================================
@@ -304,6 +387,11 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(n => n.UserId)
                   .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(n => n.Spa)
+                  .WithMany()
+                  .HasForeignKey(n => n.SpaId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ==========================================
@@ -331,6 +419,11 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(a => a.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.Spa)
+                  .WithMany()
+                  .HasForeignKey(a => a.SpaId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ==========================================
@@ -440,14 +533,15 @@ public class ApplicationDbContext : DbContext
         public string ActionType { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
         public string? EntityId { get; set; }
+        public long? SpaId { get; set; }
     }
 
-    private (long? UserId, string ActorName, string IpAddress) GetCurrentActorContext()
+    private (long? UserId, long? SpaId, string ActorName, string IpAddress) GetCurrentActorContext()
     {
         var httpContext = _httpContextAccessor?.HttpContext;
         if (httpContext == null)
         {
-            return (null, "Hệ thống tự động", "127.0.0.1");
+            return (null, null, "Hệ thống tự động", "127.0.0.1");
         }
 
         long? userId = null;
@@ -455,6 +549,13 @@ public class ApplicationDbContext : DbContext
         if (long.TryParse(userIdStr, out var parsedId) && parsedId > 0)
         {
             userId = parsedId;
+        }
+
+        long? spaId = null;
+        var spaIdStr = httpContext.User?.FindFirstValue("SpaId");
+        if (long.TryParse(spaIdStr, out var parsedSpaId) && parsedSpaId > 0)
+        {
+            spaId = parsedSpaId;
         }
 
         var fullName = httpContext.User?.FindFirstValue("FullName")
@@ -467,7 +568,7 @@ public class ApplicationDbContext : DbContext
             ip = "127.0.0.1";
         }
 
-        return (userId, fullName, ip);
+        return (userId, spaId, fullName, ip);
     }
 
     private List<PendingAuditEntry> CaptureAuditEntriesBeforeSave()
@@ -752,6 +853,20 @@ public class ApplicationDbContext : DbContext
         };
     }
 
+    private static long? ResolveEntitySpaId(object entity, long? actorSpaId)
+    {
+        var entitySpaId = entity switch
+        {
+            Customer c => c.SpaId,
+            Appointment a => a.SpaId,
+            Service s => s.SpaId,
+            User u => u.SpaId,
+            AutomationRule r => r.SpaId,
+            _ => null
+        };
+        return entitySpaId ?? actorSpaId;
+    }
+
     private void PersistCapturedAuditEntriesSync(List<PendingAuditEntry> pendingAudits)
     {
         try
@@ -761,11 +876,14 @@ public class ApplicationDbContext : DbContext
             long resolvedUserId = actor.UserId ?? Users.AsNoTracking().Where(u => u.Status == "active").OrderBy(u => u.RoleId).Select(u => u.UserId).FirstOrDefault();
             if (resolvedUserId <= 0) return;
 
+            long? resolvedUserSpaId = actor.SpaId ?? Users.AsNoTracking().Where(u => u.UserId == resolvedUserId).Select(u => u.SpaId).FirstOrDefault();
+
             foreach (var item in pendingAudits)
             {
                 AuditLogs.Add(new AuditLog
                 {
                     UserId = resolvedUserId,
+                    SpaId = ResolveEntitySpaId(item.Entity, resolvedUserSpaId),
                     ModuleName = item.ModuleName,
                     ActionType = item.ActionType,
                     Description = item.Description,
@@ -801,6 +919,11 @@ public class ApplicationDbContext : DbContext
 
             if (resolvedUserId <= 0) return;
 
+            long? resolvedUserSpaId = actor.SpaId ?? await Users.AsNoTracking()
+                .Where(u => u.UserId == resolvedUserId)
+                .Select(u => u.SpaId)
+                .FirstOrDefaultAsync(cancellationToken);
+
             foreach (var item in pendingAudits)
             {
                 var entityId = ResolveEntityPrimaryKey(item.Entity, item.EntityId);
@@ -813,6 +936,7 @@ public class ApplicationDbContext : DbContext
                 AuditLogs.Add(new AuditLog
                 {
                     UserId = resolvedUserId,
+                    SpaId = ResolveEntitySpaId(item.Entity, resolvedUserSpaId),
                     ModuleName = item.ModuleName,
                     ActionType = item.ActionType,
                     Description = desc,

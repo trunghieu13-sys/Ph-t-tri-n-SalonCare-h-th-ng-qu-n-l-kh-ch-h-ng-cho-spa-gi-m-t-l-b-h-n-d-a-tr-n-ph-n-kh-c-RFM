@@ -28,6 +28,16 @@ public class HeaderController : Controller
     [HttpGet]
     public async Task<IActionResult> GlobalSearch(string? query)
     {
+        if (MaliciousInputFilter.ContainsMaliciousPayload(query, out _))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                code = "MALICIOUS_INPUT_DETECTED",
+                message = "Cảnh báo bảo mật: Chuỗi tìm kiếm chứa mã độc XSS hoặc SQL Injection đã bị hệ thống chặn!"
+            });
+        }
+
         if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 1)
         {
             return Json(new
@@ -46,9 +56,42 @@ public class HeaderController : Controller
 
         try
         {
-            // 1. Tìm Khách hàng (Tên, SĐT, Email)
-            var customers = await _context.Customers
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = true,
+                    isUnassignedStaff = true,
+                    query,
+                    total = 0,
+                    customers = Array.Empty<object>(),
+                    appointments = Array.Empty<object>(),
+                    services = Array.Empty<object>(),
+                    staff = Array.Empty<object>()
+                });
+            }
+
+            // 1. Tìm Khách hàng (Tên, SĐT, Email - lọc theo spa_id)
+            var custQuery = _context.Customers.AsNoTracking().AsQueryable();
+            var apptQuery = _context.Appointments
                 .AsNoTracking()
+                .Include(a => a.Customer)
+                .Include(a => a.AppointmentServices)
+                    .ThenInclude(aps => aps.Service)
+                .AsQueryable();
+            var srvQuery = _context.Services.AsNoTracking().Where(s => s.IsActive);
+            var staffQuery = _context.Users.AsNoTracking().Include(u => u.Role).Where(u => u.Status != "resigned");
+
+            if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                custQuery = custQuery.Where(c => c.SpaId == tenant.SpaId.Value);
+                apptQuery = apptQuery.Where(a => a.SpaId == tenant.SpaId.Value);
+                srvQuery = srvQuery.Where(s => s.SpaId == tenant.SpaId.Value);
+                staffQuery = staffQuery.Where(u => u.SpaId == tenant.SpaId.Value);
+            }
+
+            var customers = await custQuery
                 .Where(c => c.FullName.ToLower().Contains(keyword) 
                          || (c.Phone != null && c.Phone.Contains(keyword)) 
                          || (c.Email != null && c.Email.ToLower().Contains(keyword)))
@@ -68,11 +111,7 @@ public class HeaderController : Controller
                 .ToListAsync();
 
             // 2. Tìm Lịch hẹn (Mã lịch hẹn, Tên khách hàng, Trạng thái)
-            var appointments = await _context.Appointments
-                .AsNoTracking()
-                .Include(a => a.Customer)
-                .Include(a => a.AppointmentServices)
-                    .ThenInclude(aps => aps.Service)
+            var appointments = await apptQuery
                 .Where(a => a.AppointmentId.ToString().Contains(keyword)
                          || (a.Customer != null && a.Customer.FullName.ToLower().Contains(keyword))
                          || (a.Status != null && a.Status.ToLower().Contains(keyword))
@@ -93,9 +132,8 @@ public class HeaderController : Controller
                 .ToListAsync();
 
             // 3. Tìm Danh mục Dịch vụ (Tên dịch vụ, Danh mục nhóm)
-            var services = await _context.Services
-                .AsNoTracking()
-                .Where(s => s.IsActive && (s.ServiceName.ToLower().Contains(keyword) || s.CategoryName.ToLower().Contains(keyword)))
+            var services = await srvQuery
+                .Where(s => s.ServiceName.ToLower().Contains(keyword) || s.CategoryName.ToLower().Contains(keyword))
                 .OrderBy(s => s.ServiceName)
                 .Take(5)
                 .Select(s => new
@@ -112,14 +150,12 @@ public class HeaderController : Controller
                 .ToListAsync();
 
             // 4. Tìm Đội ngũ Nhân viên (Họ tên, Chuyên môn, SĐT, Username)
-            var staff = await _context.Users
-                .AsNoTracking()
-                .Include(u => u.Role)
-                .Where(u => u.Status != "resigned" && (
+            var staff = await staffQuery
+                .Where(u =>
                     u.FullName.ToLower().Contains(keyword) ||
                     u.Username.ToLower().Contains(keyword) ||
                     (u.Phone != null && u.Phone.Contains(keyword)) ||
-                    (u.Specialty != null && u.Specialty.ToLower().Contains(keyword))))
+                    (u.Specialty != null && u.Specialty.ToLower().Contains(keyword)))
                 .OrderBy(u => u.FullName)
                 .Take(5)
                 .Select(u => new

@@ -1,4 +1,5 @@
 using System.Globalization;
+using CRM_V2.Data;
 using CRM_V2.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,11 +9,16 @@ namespace CRM_V2.Controllers;
 public class DashboardController : Controller
 {
     private readonly IDashboardService _dashboardService;
+    private readonly ApplicationDbContext _context;
     private readonly ILogger<DashboardController> _logger;
 
-    public DashboardController(IDashboardService dashboardService, ILogger<DashboardController> logger)
+    public DashboardController(
+        IDashboardService dashboardService,
+        ApplicationDbContext context,
+        ILogger<DashboardController> logger)
     {
         _dashboardService = dashboardService;
+        _context = context;
         _logger = logger;
     }
 
@@ -31,11 +37,17 @@ public class DashboardController : Controller
                 targetDate = parsedDate;
             }
 
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
             var summary = await _dashboardService.GetSummaryDataAsync(targetDate);
 
             return Json(new
             {
                 success = true,
+                isUnassignedStaff = tenant.IsUnassignedTenantUser,
+                spaId = tenant.SpaId,
+                unassignedBannerMessage = tenant.IsUnassignedTenantUser
+                    ? "Bạn chưa tham gia đội ngũ Spa nào. Vui lòng chờ Chủ Spa gửi lời mời hoặc kiểm tra mục Lời mời của tôi."
+                    : null,
                 targetDate = targetDate.ToString("yyyy-MM-dd"),
                 targetDateFormatted = targetDate.ToString("dd/MM/yyyy"),
                 kpis = new

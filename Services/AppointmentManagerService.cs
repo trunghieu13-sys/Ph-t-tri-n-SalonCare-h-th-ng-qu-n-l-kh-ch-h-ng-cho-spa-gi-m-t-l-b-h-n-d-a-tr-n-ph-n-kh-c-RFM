@@ -13,16 +13,25 @@ public class AppointmentManagerService : IAppointmentService
 
     private readonly ApplicationDbContext _context;
     private readonly IRfmService _rfmService;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly ILogger<AppointmentManagerService> _logger;
 
     public AppointmentManagerService(
         ApplicationDbContext context,
         IRfmService rfmService,
-        ILogger<AppointmentManagerService> logger)
+        ILogger<AppointmentManagerService> logger,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _context = context;
         _rfmService = rfmService;
         _logger = logger;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private TenantResolution ResolveCurrentTenant()
+    {
+        var httpContext = _httpContextAccessor?.HttpContext;
+        return TenantContext.Resolve(httpContext?.User, _context, httpContext);
     }
 
     /// <summary>
@@ -138,23 +147,55 @@ public class AppointmentManagerService : IAppointmentService
             }
         }
 
-        // 1. Lấy tất cả KTV / Nhân viên đang hoạt động (Ưu tiên hiển thị KTV role_id = 3 lên đầu)
-        var employees = await _context.Users
+        var tenant = ResolveCurrentTenant();
+        if (tenant.IsUnassignedTenantUser)
+        {
+            return new AvailableEmployeesResultDto
+            {
+                Success = true,
+                Date = targetDate.ToString("yyyy-MM-dd"),
+                StartTime = startTime.ToString(@"hh\:mm"),
+                EndTime = endTime.ToString(@"hh\:mm"),
+                DurationMinutes = durationMinutes,
+                TotalEmployees = 0,
+                AvailableCount = 0,
+                BusyCount = 0,
+                AllBusy = false,
+                Message = "Bạn chưa tham gia đội ngũ Spa nào."
+            };
+        }
+
+        // 1. Lấy tất cả KTV / Nhân viên đang hoạt động trong cùng Spa (Ưu tiên hiển thị KTV role_id = 3 lên đầu)
+        var empQuery = _context.Users
             .AsNoTracking()
             .Include(u => u.Role)
-            .Where(u => u.Status == "active")
+            .Where(u => u.Status == "active");
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            empQuery = empQuery.Where(u => u.SpaId == tenant.SpaId.Value);
+        }
+
+        var employees = await empQuery
             .OrderByDescending(u => u.RoleId)
             .ThenBy(u => u.FullName)
             .ToListAsync();
 
         // 2. Lấy toàn bộ lịch hẹn đang giữ chỗ ('Pending', 'Confirmed', 'InService') trong ngày đó
-        var dayAppointments = await _context.Appointments
+        var apptQuery = _context.Appointments
             .AsNoTracking()
             .Include(a => a.Customer)
             .Where(a =>
                 a.AppointmentDate == targetDate &&
                 ActiveBlockingStatuses.Contains(a.Status) &&
-                (!excludeAppointmentId.HasValue || a.AppointmentId != excludeAppointmentId.Value))
+                (!excludeAppointmentId.HasValue || a.AppointmentId != excludeAppointmentId.Value));
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            apptQuery = apptQuery.Where(a => a.SpaId == tenant.SpaId.Value);
+        }
+
+        var dayAppointments = await apptQuery
             .OrderBy(a => a.StartTime)
             .ToListAsync();
 
@@ -288,8 +329,11 @@ public class AppointmentManagerService : IAppointmentService
             };
         }
 
-        // Mở Transaction với mức cô lập Serializable để khóa phạm vi đọc/ghi, chống Race Condition tuyệt đối
-        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        // Mở Transaction với mức cô lập Serializable trên SQL Server (Relational) để khóa phạm vi đọc/ghi, chống Race Condition tuyệt đối
+        var isRelational = _context.Database.IsRelational();
+        await using var transaction = isRelational
+            ? await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable)
+            : null;
 
         try
         {
@@ -300,7 +344,7 @@ public class AppointmentManagerService : IAppointmentService
 
             if (selectedServices.Count == 0)
             {
-                await transaction.RollbackAsync();
+                if (transaction != null) await transaction.RollbackAsync();
                 return new AppointmentOperationResult
                 {
                     Success = false,
@@ -323,19 +367,40 @@ public class AppointmentManagerService : IAppointmentService
             decimal totalPrice = selectedServices.Sum(s => s.Price);
             var targetDate = model.AppointmentDate.Date;
 
-            // 2. Truy vấn toàn bộ KTV đang active và các lịch hẹn đang giữ chỗ trong ngày (trong Transaction Serializable)
-            var activeEmployees = await _context.Users
+            var tenant = ResolveCurrentTenant();
+            var customerRecord = await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.CustomerId == model.CustomerId);
+            long? effectiveSpaId = tenant.SpaId ?? customerRecord?.SpaId;
+            if (!effectiveSpaId.HasValue && currentUserId.HasValue)
+            {
+                effectiveSpaId = await _context.Users.AsNoTracking()
+                    .Where(u => u.UserId == currentUserId.Value)
+                    .Select(u => u.SpaId)
+                    .FirstOrDefaultAsync();
+            }
+
+            // 2. Truy vấn toàn bộ KTV đang active và các lịch hẹn đang giữ chỗ trong ngày (trong Transaction Serializable, cô lập theo spa_id)
+            var activeEmpQuery = _context.Users
                 .Include(u => u.Role)
-                .Where(u => u.Status == "active")
+                .Where(u => u.Status == "active");
+
+            var dayApptQuery = _context.Appointments
+                .Include(a => a.Customer)
+                .Where(a =>
+                    a.AppointmentDate == targetDate &&
+                    ActiveBlockingStatuses.Contains(a.Status));
+
+            if (!tenant.IsAdminOrUnscoped && effectiveSpaId.HasValue)
+            {
+                activeEmpQuery = activeEmpQuery.Where(u => u.SpaId == effectiveSpaId.Value);
+                dayApptQuery = dayApptQuery.Where(a => a.SpaId == effectiveSpaId.Value);
+            }
+
+            var activeEmployees = await activeEmpQuery
                 .OrderByDescending(u => u.RoleId)
                 .ThenBy(u => u.FullName)
                 .ToListAsync();
 
-            var dayAppointments = await _context.Appointments
-                .Include(a => a.Customer)
-                .Where(a =>
-                    a.AppointmentDate == targetDate &&
-                    ActiveBlockingStatuses.Contains(a.Status))
+            var dayAppointments = await dayApptQuery
                 .OrderBy(a => a.StartTime)
                 .ToListAsync();
 
@@ -372,7 +437,7 @@ public class AppointmentManagerService : IAppointmentService
                     startTime,
                     totalDurationMinutes);
 
-                await transaction.RollbackAsync();
+                if (transaction != null) await transaction.RollbackAsync();
                 return new AppointmentOperationResult
                 {
                     Success = false,
@@ -394,7 +459,7 @@ public class AppointmentManagerService : IAppointmentService
                 var selectedEmpStatus = empAvailabilityList.FirstOrDefault(e => e.Id == assignedEmployeeId.Value);
                 if (selectedEmpStatus == null)
                 {
-                    await transaction.RollbackAsync();
+                    if (transaction != null) await transaction.RollbackAsync();
                     return new AppointmentOperationResult
                     {
                         Success = false,
@@ -412,7 +477,7 @@ public class AppointmentManagerService : IAppointmentService
                         totalDurationMinutes,
                         assignedEmployeeId.Value);
 
-                    await transaction.RollbackAsync();
+                    if (transaction != null) await transaction.RollbackAsync();
                     return new AppointmentOperationResult
                     {
                         Success = false,
@@ -440,11 +505,12 @@ public class AppointmentManagerService : IAppointmentService
                 }
             }
 
-            // 6. Khởi tạo và lưu đối tượng Appointment
+            // 6. Khởi tạo và lưu đối tượng Appointment (tự động gán spa_id = CurrentUserSpaId)
             var appointment = new Appointment
             {
                 CustomerId = model.CustomerId,
                 EmployeeId = assignedEmployeeId,
+                SpaId = effectiveSpaId,
                 AppointmentDate = targetDate,
                 StartTime = startTime,
                 EndTime = endTime,
@@ -482,7 +548,7 @@ public class AppointmentManagerService : IAppointmentService
             }
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            if (transaction != null) await transaction.CommitAsync();
 
             var assignedName = empAvailabilityList.FirstOrDefault(e => e.Id == assignedEmployeeId)?.Name ?? "Tự động";
             _logger.LogInformation(
@@ -504,7 +570,7 @@ public class AppointmentManagerService : IAppointmentService
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
+            if (transaction != null) await transaction.RollbackAsync();
             _logger.LogError(ex, "Lỗi Transaction khi tạo lịch hẹn mới");
             throw;
         }

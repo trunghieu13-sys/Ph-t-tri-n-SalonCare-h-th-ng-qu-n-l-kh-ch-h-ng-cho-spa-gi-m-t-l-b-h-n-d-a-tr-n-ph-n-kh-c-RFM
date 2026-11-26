@@ -12,6 +12,54 @@ public interface IStaffService
     Task<(bool Success, string Message, string NewStatus)> ToggleStatusAsync(long userId);
     Task<(bool Success, string Message)> DeleteStaffAsync(long userId);
     List<RolePermissionInfo> GetRolePermissionsMatrix();
+
+    // ===== Mời nhân viên vào đội ngũ Spa (Multi-Tenant) =====
+    Task<List<StaffInviteSearchItemDto>> SearchStaffForInvitationAsync(string? query);
+    Task<(bool Success, string Message)> SendInvitationAsync(long inviteeUserId);
+    Task<(bool Success, string Message)> RemoveFromTeamAsync(long userId);
+    Task<List<MyInvitationDto>> GetMyPendingInvitationsAsync(long userId);
+    Task<(bool Success, string Message, long? SpaId)> AcceptInvitationAsync(long invitationId, long userId);
+    Task<(bool Success, string Message)> RejectInvitationAsync(long invitationId, long userId);
+}
+
+public class StaffInviteSearchItemDto
+{
+    public long UserId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? AvatarUrl { get; set; }
+
+    /// <summary>NoSpa (có thể mời) | Pending (đang chờ phản hồi) | InTeam (đã thuộc đội ngũ) | OtherSpa (thuộc quán khác)</summary>
+    public string InviteStatus { get; set; } = "NoSpa";
+}
+
+public class MyInvitationDto
+{
+    public long InvitationId { get; set; }
+    public long SpaId { get; set; }
+    public string SpaName { get; set; } = string.Empty;
+    public string OwnerName { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public class InvitationRequest
+{
+    [JsonPropertyName("inviteeUserId")]
+    public long InviteeUserId { get; set; }
+}
+
+public class InvitationResponseRequest
+{
+    [JsonPropertyName("invitationId")]
+    public long InvitationId { get; set; }
+}
+
+public class RemoveFromTeamRequest
+{
+    [JsonPropertyName("userId")]
+    public long UserId { get; set; }
 }
 
 public class StaffDto

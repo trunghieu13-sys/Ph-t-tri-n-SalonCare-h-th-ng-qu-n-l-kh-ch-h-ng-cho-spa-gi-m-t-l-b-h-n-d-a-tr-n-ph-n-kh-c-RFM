@@ -81,5 +81,11 @@ public class Customer
     [Column("zalo_user_id")]
     public string? ZaloUserId { get; set; }
 
+    [Column("spa_id")]
+    public long? SpaId { get; set; }
+
+    [ForeignKey(nameof(SpaId))]
+    public virtual Spa? Spa { get; set; }
+
     public virtual RfmScore? RfmScore { get; set; }
 }

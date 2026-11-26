@@ -4,11 +4,14 @@ using System.Text.Json.Nodes;
 using CRM_V2.Data;
 using CRM_V2.Models;
 using CRM_V2.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Controllers;
 
+[Authorize(Roles = "Admin,Owner")]
 public class CustomerCareController : Controller
 {
     private readonly ApplicationDbContext _context;
@@ -69,10 +72,61 @@ public class CustomerCareController : Controller
     /// Lấy danh sách kịch bản tự động (automation_rules), số lượng khách theo nhóm thực tế từ bảng customers,
     /// trạng thái kết nối cổng Gmail/SMS và lịch sử gửi tin gần nhất từ bảng customer_interactions.
     /// </summary>
+    private bool IsCurrentUserStaffOnly()
+    {
+        if (User?.Identity?.IsAuthenticated != true)
+            return false;
+
+        return !User.IsInRole("Admin") &&
+               !User.IsInRole("Owner") &&
+               !User.IsInRole("admin") &&
+               !User.IsInRole("owner");
+    }
+
+    private ObjectResult ForbiddenStaffResult() =>
+        StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            code = "FORBIDDEN",
+            message = "403 Forbidden: Tài khoản Nhân viên (Staff) không có quyền truy cập phân hệ Chăm sóc KH & Cài đặt Gateway!"
+        });
+
     [HttpGet]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetDashboardData()
     {
-        var rules = await _context.AutomationRules
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+        var tenant = TenantContext.Resolve(User, _context, HttpContext);
+        if (tenant.IsUnassignedTenantUser)
+        {
+            return Json(new
+            {
+                success = true,
+                isUnassignedStaff = true,
+                rules = Array.Empty<object>(),
+                groups = new { allCount = 0, vipCount = 0, loyalCount = 0, newCount = 0, inactiveCount = 0 },
+                gateway = new { isEmailConfigured = false, isSmsConfigured = false, zaloUseSandboxMode = true },
+                interactions = Array.Empty<object>()
+            });
+        }
+
+        var rulesQuery = _context.AutomationRules.AsNoTracking().AsQueryable();
+        var activeCustomersQuery = _context.Customers.Where(c => c.CustomerStatus == "Hoat_dong");
+        var interactionsQuery = _context.CustomerInteractions
+            .Include(i => i.Customer)
+            .Include(i => i.Rule)
+            .Include(i => i.Campaign)
+            .AsQueryable();
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            rulesQuery = rulesQuery.Where(r => r.SpaId == tenant.SpaId.Value || r.SpaId == null);
+            activeCustomersQuery = activeCustomersQuery.Where(c => c.SpaId == tenant.SpaId.Value);
+            interactionsQuery = interactionsQuery.Where(i => i.Customer != null && i.Customer.SpaId == tenant.SpaId.Value);
+        }
+
+        var rules = await rulesQuery
             .OrderBy(r => r.RuleId)
             .Select(r => new
             {
@@ -87,7 +141,6 @@ public class CustomerCareController : Controller
             })
             .ToListAsync();
 
-        var activeCustomersQuery = _context.Customers.Where(c => c.CustomerStatus == "Hoat_dong");
         var thirtyDaysAgo = DateTime.Now.Date.AddDays(-30);
 
         var allCount = await activeCustomersQuery.CountAsync();
@@ -96,10 +149,7 @@ public class CustomerCareController : Controller
         var newCount = await activeCustomersQuery.CountAsync(c => c.CustomerType == "Moi");
         var inactiveCount = await activeCustomersQuery.CountAsync(c => c.LastVisitAt == null || c.LastVisitAt < thirtyDaysAgo);
 
-        var recentInteractions = await _context.CustomerInteractions
-            .Include(i => i.Customer)
-            .Include(i => i.Rule)
-            .Include(i => i.Campaign)
+        var recentInteractions = await interactionsQuery
             .OrderByDescending(i => i.SentAt)
             .Take(20)
             .Select(i => new
@@ -182,8 +232,12 @@ public class CustomerCareController : Controller
     /// và lưu cấu hình Zalo OA / ZNS vào bảng dbo.system_configs trong SQL Server.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SaveGatewayConfig([FromBody] GatewayConfigDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null)
             return BadRequest(new { success = false, message = "Dữ liệu cấu hình không hợp lệ." });
 
@@ -304,8 +358,12 @@ public class CustomerCareController : Controller
     /// Gửi thử nghiệm 1 Email, 1 SMS hoặc 1 tin Zalo ZNS để kiểm tra kết nối ngay trên giao diện
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> TestGateway([FromBody] TestGatewayDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || string.IsNullOrWhiteSpace(dto.Recipient))
             return BadRequest(new { success = false, message = "Vui lòng nhập Email hoặc SĐT nhận tin thử nghiệm." });
 
@@ -399,8 +457,12 @@ public class CustomerCareController : Controller
     /// Bật/Tắt trạng thái is_active của kịch bản tự động trong bảng automation_rules
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> ToggleRule([FromBody] ToggleRuleDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || dto.RuleId <= 0)
             return BadRequest(new { success = false, message = "Mã kịch bản không hợp lệ." });
 
@@ -429,8 +491,12 @@ public class CustomerCareController : Controller
     /// kiểm tra cấu hình cổng gửi, gửi thật qua SMTP Gmail / Twilio SMS và ghi nhật ký vào bảng customer_interactions.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> SendCampaign([FromBody] SendCampaignDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || string.IsNullOrWhiteSpace(dto.MessageContent))
         {
             return BadRequest(new { success = false, message = "Vui lòng nhập nội dung tin nhắn chiến dịch." });
@@ -467,8 +533,18 @@ public class CustomerCareController : Controller
         string targetGroup = (dto.TargetGroup ?? "ALL").Trim();
         var thirtyDaysAgo = DateTime.Now.Date.AddDays(-30);
 
-        // 1. Truy vấn danh sách khách hàng từ bảng customers theo target_group
+        var tenant = TenantContext.Resolve(User, _context, HttpContext);
+        if (tenant.IsUnassignedTenantUser)
+        {
+            return BadRequest(new { success = false, message = "Bạn chưa tham gia đội ngũ Spa nào." });
+        }
+
+        // 1. Truy vấn danh sách khách hàng từ bảng customers theo target_group (cô lập theo spa_id)
         var query = _context.Customers.Where(c => c.CustomerStatus == "Hoat_dong");
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            query = query.Where(c => c.SpaId == tenant.SpaId.Value);
+        }
 
         switch (targetGroup.ToUpperInvariant())
         {

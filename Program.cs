@@ -33,12 +33,21 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Events.OnRedirectToAccessDenied = context =>
         {
             if (context.Request.Path.StartsWithSegments("/AuditLog") ||
+                context.Request.Path.StartsWithSegments("/Reports") ||
+                context.Request.Path.StartsWithSegments("/Staff") ||
+                context.Request.Path.StartsWithSegments("/Rfm") ||
+                context.Request.Path.StartsWithSegments("/Admin") ||
+                context.Request.Path.StartsWithSegments("/Customers") ||
+                context.Request.Path.StartsWithSegments("/Services") ||
+                context.Request.Path.StartsWithSegments("/Appointments") ||
+                context.Request.Path.StartsWithSegments("/CustomerCare") ||
+                context.Request.Method != HttpMethods.Get ||
                 context.Request.Headers["X-Requested-With"] == "XMLHttpRequest" ||
                 context.Request.Headers.Accept.ToString().Contains("application/json"))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 context.Response.ContentType = "application/json; charset=utf-8";
-                return context.Response.WriteAsync("{\"success\":false,\"code\":\"FORBIDDEN\",\"message\":\"403 Forbidden: Chỉ tài khoản Chủ Spa (Owner) hoặc Quản trị viên (Admin) mới được phép truy cập Nhật ký hệ thống!\"}");
+                return context.Response.WriteAsync("{\"success\":false,\"code\":\"FORBIDDEN\",\"message\":\"403 Forbidden: Tài khoản của bạn không có quyền thực hiện thao tác này!\"}");
             }
             context.Response.Redirect(context.RedirectUri);
             return Task.CompletedTask;
@@ -97,9 +106,13 @@ builder.Services.AddHostedService<AutomationBackgroundService>();
 builder.Services.AddHostedService<ReminderBackgroundWorker>();
 
 // ==========================================
-// 5. CẤU HÌNH MVC CONTROLLERS & VIEWS
+// 5. CẤU HÌNH MVC CONTROLLERS & VIEWS + BỘ LỌC BẢO MẬT (XSS & SQLi FILTER)
 // ==========================================
-builder.Services.AddControllersWithViews();
+builder.Services.AddScoped<MaliciousInputFilter>();
+builder.Services.AddControllersWithViews(options =>
+{
+    options.Filters.Add<MaliciousInputFilter>();
+});
 
 var app = builder.Build();
 

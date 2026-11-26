@@ -347,4 +347,237 @@ public class SalonCareCoreTests
         Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileResult.ContentType);
         Assert.True(fileResult.FileContents.Length > 0);
     }
+
+    /// <summary>
+    /// Security Test 1 (RBAC & Least Privilege):
+    /// Tài khoản quyền Staff gọi các API của Owner/Admin (AuditLogController, ReportsController, StaffController.UpdateRole/Create/ToggleStatus)
+    /// -> Phải bị chặn và trả về 403 Forbidden.
+    /// </summary>
+    [Fact]
+    public async Task TC08_Security_RBAC_StaffCallingOwnerApi_ShouldReturn403Forbidden()
+    {
+        await using var db = CreateInMemoryDbContext(nameof(TC08_Security_RBAC_StaffCallingOwnerApi_ShouldReturn403Forbidden));
+
+        var staffPrincipal = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, "15"),
+            new Claim(ClaimTypes.Name, "ktv_nhanvien"),
+            new Claim(ClaimTypes.Role, "Staff")
+        }, "SalonCareCookieAuth"));
+
+        var httpContext = new DefaultHttpContext { User = staffPrincipal };
+
+        // 1. Staff gọi AuditLogController.GetLogs -> 403 Forbidden
+        var auditMock = new Mock<IAuditLogService>();
+        var auditController = new AuditLogController(auditMock.Object, NullLogger<AuditLogController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        var auditRes = await auditController.GetLogs();
+        var auditObj = Assert.IsType<ObjectResult>(auditRes);
+        Assert.Equal(StatusCodes.Status403Forbidden, auditObj.StatusCode);
+
+        // 2. Staff gọi ReportsController.GetNoShowAndRetentionReport -> 403 Forbidden
+        var reportsController = new ReportsController(db, NullLogger<ReportsController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        var reportRes = await reportsController.GetNoShowAndRetentionReport();
+        var reportObj = Assert.IsType<ObjectResult>(reportRes);
+        Assert.Equal(StatusCodes.Status403Forbidden, reportObj.StatusCode);
+
+        // 3. Staff gọi StaffController.UpdateRole, Create, ToggleStatus -> 403 Forbidden
+        var staffMock = new Mock<IStaffService>();
+        var staffController = new StaffController(staffMock.Object, NullLogger<StaffController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+
+        var updateRoleRes = await staffController.UpdateRole(new UpdateRoleRequest { UserId = 15, NewRoleId = 2 });
+        var updateRoleObj = Assert.IsType<ObjectResult>(updateRoleRes);
+        Assert.Equal(StatusCodes.Status403Forbidden, updateRoleObj.StatusCode);
+
+        var createStaffRes = await staffController.Create(new CreateStaffDto { FullName = "NV Mới", Username = "nvmoi" });
+        var createStaffObj = Assert.IsType<ObjectResult>(createStaffRes);
+        Assert.Equal(StatusCodes.Status403Forbidden, createStaffObj.StatusCode);
+
+        var toggleRes = await staffController.ToggleStatus(1);
+        var toggleObj = Assert.IsType<ObjectResult>(toggleRes);
+        Assert.Equal(StatusCodes.Status403Forbidden, toggleObj.StatusCode);
+
+        // 4. Staff gọi CustomersController (Create, Update, Delete), ServicesController (Create, Update, Delete),
+        //    AppointmentsController (Create, UpdateStatus, Reschedule, Cancel) và AdminController -> 403 Forbidden
+        var customersController = new CustomersController(
+            db,
+            new Mock<IRfmService>().Object,
+            auditMock.Object,
+            NullLogger<CustomersController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await customersController.Create(new CustomerCreateViewModel { FullName = "Test", Phone = "0909111222" })).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await customersController.Delete(new CustomerDeleteDto { CustomerId = 1 })).StatusCode);
+
+        var servicesController = new ServicesController(db, NullLogger<ServicesController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await servicesController.Create(new ServiceUpsertDto { ServiceName = "Test", DurationMinutes = 60, Price = 100000 })).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await servicesController.Delete(1)).StatusCode);
+
+        var appointmentsController = new AppointmentsController(
+            db,
+            new Mock<IAppointmentService>().Object,
+            NullLogger<AppointmentsController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await appointmentsController.Create(new AppointmentCreateViewModel())).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await appointmentsController.UpdateStatus(new AppointmentUpdateStatusViewModel { AppointmentId = 1, NewStatus = "Confirmed" })).StatusCode);
+
+        var adminController = new AdminController(db, NullLogger<AdminController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(await adminController.GetSystemOverview()).StatusCode);
+    }
+
+    /// <summary>
+    /// Security Test 2 (MaliciousInputFilter - Chống XSS & SQL Injection):
+    /// Gửi chuỗi <script>alert(1)</script> hoặc ' OR '1'='1 vào GlobalSearch / CreateCustomer
+    /// -> Phải bị chặn và trả về 400 Bad Request.
+    /// </summary>
+    [Fact]
+    public async Task TC09_Security_MaliciousInput_XssAndSqlInjection_ShouldReturn400BadRequest()
+    {
+        await using var db = CreateInMemoryDbContext(nameof(TC09_Security_MaliciousInput_XssAndSqlInjection_ShouldReturn400BadRequest));
+
+        var notifMock = new Mock<INotificationService>();
+        var headerController = new HeaderController(db, notifMock.Object, NullLogger<HeaderController>.Instance);
+
+        var rfmMock = new Mock<IRfmService>();
+        var auditMock = new Mock<IAuditLogService>();
+        var customersController = new CustomersController(db, rfmMock.Object, auditMock.Object, NullLogger<CustomersController>.Instance);
+
+        // 1. Gửi payload XSS <script>alert(1)</script> vào GlobalSearch -> 400 Bad Request
+        var xssSearchRes = await headerController.GlobalSearch("<script>alert(1)</script>");
+        var xssSearchBadReq = Assert.IsType<BadRequestObjectResult>(xssSearchRes);
+        Assert.Equal(StatusCodes.Status400BadRequest, xssSearchBadReq.StatusCode);
+
+        // 2. Gửi payload SQL Injection ' OR '1'='1 vào GlobalSearch -> 400 Bad Request
+        var sqliSearchRes = await headerController.GlobalSearch("' OR '1'='1");
+        var sqliSearchBadReq = Assert.IsType<BadRequestObjectResult>(sqliSearchRes);
+        Assert.Equal(StatusCodes.Status400BadRequest, sqliSearchBadReq.StatusCode);
+
+        // 3. Gửi payload XSS <script>alert(1)</script> vào CreateCustomer -> 400 Bad Request
+        var xssCustRes = await customersController.Create(new CustomerCreateViewModel
+        {
+            FullName = "<script>alert(1)</script>",
+            Phone = "0911223344",
+            CustomerType = "Moi"
+        });
+        var xssCustBadReq = Assert.IsType<BadRequestObjectResult>(xssCustRes);
+        Assert.Equal(StatusCodes.Status400BadRequest, xssCustBadReq.StatusCode);
+
+        // 4. Gửi payload SQL Injection ' OR '1'='1 vào CreateCustomer -> 400 Bad Request
+        var sqliCustRes = await customersController.Create(new CustomerCreateViewModel
+        {
+            FullName = "Nguyễn Văn A' OR '1'='1",
+            Phone = "0911223344",
+            CustomerType = "Moi"
+        });
+        var sqliCustBadReq = Assert.IsType<BadRequestObjectResult>(sqliCustRes);
+        Assert.Equal(StatusCodes.Status400BadRequest, sqliCustBadReq.StatusCode);
+
+        // 5. Kiểm tra trực tiếp qua MaliciousInputFilter.OnActionExecuting
+        var filter = new MaliciousInputFilter(NullLogger<MaliciousInputFilter>.Instance);
+        var actionContext = new ActionContext(
+            new DefaultHttpContext(),
+            new Microsoft.AspNetCore.Routing.RouteData(),
+            new Microsoft.AspNetCore.Mvc.Abstractions.ActionDescriptor());
+
+        var executingContext = new Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext(
+            actionContext,
+            new List<Microsoft.AspNetCore.Mvc.Filters.IFilterMetadata>(),
+            new Dictionary<string, object?> { ["query"] = "DROP TABLE customers;--" },
+            headerController);
+
+        filter.OnActionExecuting(executingContext);
+        var filterBadReq = Assert.IsType<BadRequestObjectResult>(executingContext.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, filterBadReq.StatusCode);
+    }
+
+    /// <summary>
+    /// TC-10 (Auto): Mời nhân viên vào đội ngũ -> Pending + thông báo; Staff đồng ý -> users.spa_id được gán;
+    /// Chủ Spa xóa khỏi đội ngũ -> spa_id = NULL.
+    /// </summary>
+    [Fact]
+    public async Task TC10_SpaInvitation_SendAcceptAndRemove_ShouldUpdateSpaIdCorrectly()
+    {
+        await using var db = CreateInMemoryDbContext(nameof(TC10_SpaInvitation_SendAcceptAndRemove_ShouldUpdateSpaIdCorrectly));
+        db.Roles.AddRange(
+            new Role { RoleId = 2, RoleName = "owner", Description = "Chủ quán" },
+            new Role { RoleId = 3, RoleName = "staff", Description = "Nhân viên" });
+        db.Users.AddRange(
+            new User { UserId = 100, FullName = "Chủ Spa A", Username = "owner_a", Email = "a@x.com", PasswordHash = "x", RoleId = 2, Status = "active" },
+            new User { UserId = 200, FullName = "Nhân Viên Mới", Username = "staff_new", Email = "new@x.com", PasswordHash = "x", RoleId = 3, Status = "active" });
+        db.Spas.Add(new Spa { SpaId = 1, SpaName = "Spa của Chủ Spa A", OwnerUserId = 100, Status = "active" });
+        await db.SaveChangesAsync();
+        (await db.Users.FindAsync(100L))!.SpaId = 1;
+        await db.SaveChangesAsync();
+
+        ServiceHttp Make(long userId, string role, string? spaId)
+        {
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, userId.ToString()),
+                new(ClaimTypes.Role, role),
+                new("SpaId", spaId ?? string.Empty)
+            };
+            var ctx = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test")) };
+            var accessorMock = new Mock<IHttpContextAccessor>();
+            accessorMock.Setup(a => a.HttpContext).Returns(ctx);
+            var svc = new StaffService(db, NullLogger<StaffService>.Instance, accessorMock.Object);
+            return new ServiceHttp(svc);
+        }
+
+        var owner = Make(100, "Owner", "1").Service;
+        var staff = Make(200, "Staff", null).Service;
+
+        // Tìm -> trạng thái NoSpa
+        var found = await owner.SearchStaffForInvitationAsync("staff_new");
+        Assert.Single(found);
+        Assert.Equal("NoSpa", found[0].InviteStatus);
+
+        // Gửi lời mời -> Pending + notification
+        var sent = await owner.SendInvitationAsync(200);
+        Assert.True(sent.Success, sent.Message);
+        Assert.Single(db.SpaInvitations.Where(i => i.Status == "Pending"));
+        Assert.Single(db.Notifications.Where(n => n.UserId == 200 && n.Type == "SPA_INVITATION"));
+        Assert.Equal("Pending", (await owner.SearchStaffForInvitationAsync("staff_new"))[0].InviteStatus);
+
+        // Gửi trùng -> bị chặn
+        Assert.False((await owner.SendInvitationAsync(200)).Success);
+
+        // Staff đồng ý
+        var invitation = (await staff.GetMyPendingInvitationsAsync(200)).Single();
+        var accepted = await staff.AcceptInvitationAsync(invitation.InvitationId, 200);
+        Assert.True(accepted.Success, accepted.Message);
+        Assert.Equal(1L, accepted.SpaId);
+        Assert.Equal(1L, (await db.Users.FindAsync(200L))!.SpaId);
+        var inv = await db.SpaInvitations.SingleAsync();
+        Assert.Equal("Accepted", inv.Status);
+        Assert.NotNull(inv.RespondedAt);
+
+        // Danh sách đội ngũ của quán có nhân viên mới
+        var team = await owner.GetStaffListAsync();
+        Assert.Contains(team, t => t.UserId == 200);
+
+        // Chủ Spa xóa khỏi đội ngũ -> spa_id = NULL
+        var removed = await owner.RemoveFromTeamAsync(200);
+        Assert.True(removed.Success, removed.Message);
+        Assert.Null((await db.Users.FindAsync(200L))!.SpaId);
+    }
+
+    private sealed record ServiceHttp(StaffService Service);
 }

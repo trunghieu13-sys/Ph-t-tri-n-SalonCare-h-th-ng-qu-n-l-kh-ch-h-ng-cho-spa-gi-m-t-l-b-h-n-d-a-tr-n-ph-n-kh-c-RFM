@@ -117,7 +117,8 @@ public class AccountController : Controller
                 new(ClaimTypes.Role, roleName),
                 new("FullName", user.FullName),
                 new("AvatarUrl", string.IsNullOrWhiteSpace(user.AvatarUrl) ? defaultAvatar : user.AvatarUrl),
-                new("Phone", user.Phone ?? string.Empty)
+                new("Phone", user.Phone ?? string.Empty),
+                new("SpaId", user.SpaId?.ToString() ?? string.Empty)
             };
 
             var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -145,6 +146,7 @@ public class AccountController : Controller
                 _context.AuditLogs.Add(new AuditLog
                 {
                     UserId = user.UserId,
+                    SpaId = user.SpaId,
                     ModuleName = "AUTH",
                     ActionType = "LOGIN",
                     Description = $"Nhân viên {user.FullName} (@{user.Username} - {normalizedRole}) đăng nhập thành công vào hệ thống SalonCare CRM.",
@@ -215,15 +217,19 @@ public class AccountController : Controller
             return View(model);
         }
 
-        // 3. Lấy thông tin Role (mặc định 'owner' hoặc 'staff')
-        var targetRoleName = string.IsNullOrWhiteSpace(model.RoleName) ? "staff" : model.RoleName.Trim().ToLower();
+        // 3. Lấy thông tin Role (chỉ cho phép chọn 'owner' - Chủ Spa hoặc 'staff' - Nhân viên, tuyệt đối không cho đăng ký 'admin')
+        var requestedRole = model.RoleName?.Trim().ToLowerInvariant();
+        var targetRoleName = requestedRole == "owner" ? "owner" : "staff";
         var role = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == targetRoleName)
                    ?? await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "staff");
 
         if (role == null)
         {
-            // Tạo tạm vai trò staff nếu chưa có
-            role = new Role { RoleName = "staff", Description = "Nhân viên spa" };
+            role = new Role
+            {
+                RoleName = targetRoleName,
+                Description = targetRoleName == "owner" ? "Chủ Spa" : "Nhân viên spa"
+            };
             _context.Roles.Add(role);
             await _context.SaveChangesAsync();
         }
@@ -231,7 +237,7 @@ public class AccountController : Controller
         // 4. Mã hóa mật khẩu bằng BCrypt
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(model.Password);
 
-        // 5. Tạo mới User
+        // 5. Tạo mới User (Mặc định spa_id = NULL)
         var newUser = new User
         {
             FullName = model.FullName.Trim(),
@@ -239,7 +245,8 @@ public class AccountController : Controller
             Email = cleanEmail,
             Phone = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
             PasswordHash = passwordHash,
-            RoleId = role.RoleId,
+            RoleId = targetRoleName == "owner" ? role.RoleId : (role.RoleId > 0 ? role.RoleId : 3),
+            SpaId = null,
             AvatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
             Status = "active",
             CreatedAt = DateTime.Now,
@@ -249,18 +256,43 @@ public class AccountController : Controller
         _context.Users.Add(newUser);
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Đăng ký thành công tài khoản mới: {Username} ({Email})", newUser.Username, newUser.Email);
+        // 5B. Nếu đăng ký là Chủ Spa (owner): Tự động tạo 1 bản ghi mới trong bảng spas ("Spa của " + full_name),
+        // gán spa_id vừa tạo vào users.spa_id. Tuyệt đối KHÔNG sinh dữ liệu mẫu cho quán mới này.
+        // Nếu đăng ký là Nhân viên (staff): giữ nguyên role_id = 3 (staff) và spa_id = NULL.
+        if (string.Equals(targetRoleName, "owner", StringComparison.OrdinalIgnoreCase))
+        {
+            var newSpa = new Spa
+            {
+                SpaName = $"Spa của {newUser.FullName}",
+                OwnerUserId = newUser.UserId,
+                Phone = newUser.Phone,
+                Status = "active",
+                CreatedAt = DateTime.Now
+            };
 
-        // 6. Tự động đăng nhập luôn sau khi đăng ký
+            _context.Spas.Add(newSpa);
+            await _context.SaveChangesAsync();
+
+            newUser.SpaId = newSpa.SpaId;
+            await _context.SaveChangesAsync();
+        }
+
+        _logger.LogInformation("Đăng ký thành công tài khoản mới: {Username} ({Email}) với vai trò {Role}, SpaId={SpaId}",
+            newUser.Username, newUser.Email, role.RoleName, newUser.SpaId);
+
+        // 6. Tự động đăng nhập luôn sau khi đăng ký (gắn chuẩn hóa Role Claim 'Owner' hoặc 'Staff' và Claim 'SpaId')
+        var normalizedRole = string.Equals(role.RoleName, "owner", StringComparison.OrdinalIgnoreCase) ? "Owner" : "Staff";
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, newUser.UserId.ToString()),
             new(ClaimTypes.Name, newUser.Username),
             new(ClaimTypes.Email, newUser.Email),
-            new(ClaimTypes.Role, role.RoleName),
+            new(ClaimTypes.Role, normalizedRole),
+            new(ClaimTypes.Role, role.RoleName.ToLowerInvariant()),
             new("FullName", newUser.FullName),
             new("AvatarUrl", newUser.AvatarUrl),
-            new("Phone", newUser.Phone ?? string.Empty)
+            new("Phone", newUser.Phone ?? string.Empty),
+            new("SpaId", newUser.SpaId?.ToString() ?? string.Empty)
         };
 
         var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
@@ -469,6 +501,21 @@ public class AccountController : Controller
 
         TempData["SuccessMessage"] = "Đổi mật khẩu thành công!";
         return RedirectToAction("Index", "Home");
+    }
+
+    // =========================================================================
+    // 7. TRANG TỪ CHỐI TRUY CẬP (403 ACCESS DENIED)
+    // =========================================================================
+    [HttpGet]
+    [AllowAnonymous]
+    public IActionResult AccessDenied()
+    {
+        return StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            code = "FORBIDDEN",
+            message = "403 Forbidden: Tài khoản của bạn không có quyền truy cập vào phân hệ quản trị này!"
+        });
     }
 
     // =========================================================================

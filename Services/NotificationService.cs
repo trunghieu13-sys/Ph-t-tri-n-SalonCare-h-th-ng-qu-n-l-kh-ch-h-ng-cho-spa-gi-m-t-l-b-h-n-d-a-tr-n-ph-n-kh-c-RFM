@@ -1,5 +1,6 @@
 using CRM_V2.Data;
 using CRM_V2.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Services;
@@ -7,30 +8,59 @@ namespace CRM_V2.Services;
 public class NotificationService : INotificationService
 {
     private readonly ApplicationDbContext _context;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly ILogger<NotificationService> _logger;
 
-    public NotificationService(ApplicationDbContext context, ILogger<NotificationService> logger)
+    public NotificationService(
+        ApplicationDbContext context,
+        ILogger<NotificationService> logger,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _context = context;
         _logger = logger;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<NotificationListResult> GetNotificationsAsync(long? userId = null, int limit = 20)
     {
-        // 1. Quét thông báo tự động (lịch hẹn & sinh nhật) để đảm bảo dữ liệu mới nhất
-        try
+        var httpContext = _httpContextAccessor?.HttpContext;
+        var tenant = TenantContext.Resolve(httpContext?.User, _context, httpContext);
+
+        // 1. Quét thông báo tự động (lịch hẹn & sinh nhật) - bỏ qua với nhân viên chưa có quán
+        if (!tenant.IsUnassignedTenantUser)
         {
-            await ScanAndCreateRemindersAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Lỗi khi quét thông báo tự động trong GetNotificationsAsync");
+            try
+            {
+                await ScanAndCreateRemindersAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Lỗi khi quét thông báo tự động trong GetNotificationsAsync");
+            }
         }
 
-        // 2. Lấy thông báo theo người nhận hoặc toàn hệ thống (user_id IS NULL)
-        var query = _context.Notifications
-            .AsNoTracking()
-            .Where(n => !n.UserId.HasValue || (userId.HasValue && n.UserId == userId.Value));
+        // 2. Lấy thông báo theo người nhận hoặc toàn hệ thống (cô lập theo spa_id)
+        var effectiveUserId = userId ?? tenant.UserId;
+        IQueryable<Notification> query;
+
+        if (tenant.IsUnassignedTenantUser)
+        {
+            // Nhân viên chưa có quán: chỉ thấy thông báo gửi đích danh (ví dụ Lời mời gia nhập đội ngũ)
+            query = _context.Notifications.AsNoTracking()
+                .Where(n => effectiveUserId.HasValue && n.UserId == effectiveUserId.Value);
+        }
+        else if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            var mySpa = tenant.SpaId.Value;
+            query = _context.Notifications.AsNoTracking()
+                .Where(n => (effectiveUserId.HasValue && n.UserId == effectiveUserId.Value)
+                         || (!n.UserId.HasValue && n.SpaId == mySpa));
+        }
+        else
+        {
+            query = _context.Notifications.AsNoTracking()
+                .Where(n => !n.UserId.HasValue || (effectiveUserId.HasValue && n.UserId == effectiveUserId.Value));
+        }
 
         var unreadCount = await query.CountAsync(n => !n.IsRead);
         var totalCount = await query.CountAsync();
@@ -80,6 +110,13 @@ public class NotificationService : INotificationService
                     dto.BadgeText = "Hủy lịch";
                     break;
 
+                case "SPA_INVITATION":
+                    dto.IconClass = "fa-envelope-open-text";
+                    dto.IconColorClass = "text-amber-300";
+                    dto.BgColorClass = "bg-amber-500/20";
+                    dto.BadgeText = "Lời mời";
+                    break;
+
                 case "SYSTEM":
                 default:
                     dto.IconClass = "fa-bell";
@@ -123,9 +160,27 @@ public class NotificationService : INotificationService
     {
         try
         {
-            var unreadList = await _context.Notifications
-                .Where(n => !n.IsRead && (!n.UserId.HasValue || (userId.HasValue && n.UserId == userId.Value)))
-                .ToListAsync();
+            var httpContext = _httpContextAccessor?.HttpContext;
+            var tenant = TenantContext.Resolve(httpContext?.User, _context, httpContext);
+            var effectiveUserId = userId ?? tenant.UserId;
+
+            var unreadQuery = _context.Notifications.Where(n => !n.IsRead);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                unreadQuery = unreadQuery.Where(n => effectiveUserId.HasValue && n.UserId == effectiveUserId.Value);
+            }
+            else if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                var mySpa = tenant.SpaId.Value;
+                unreadQuery = unreadQuery.Where(n => (effectiveUserId.HasValue && n.UserId == effectiveUserId.Value)
+                                                  || (!n.UserId.HasValue && n.SpaId == mySpa));
+            }
+            else
+            {
+                unreadQuery = unreadQuery.Where(n => !n.UserId.HasValue || (effectiveUserId.HasValue && n.UserId == effectiveUserId.Value));
+            }
+
+            var unreadList = await unreadQuery.ToListAsync();
 
             if (unreadList.Count == 0)
                 return (true, "Không có thông báo nào chưa đọc.", 0);
@@ -187,6 +242,7 @@ public class NotificationService : INotificationService
                 Type = "APPOINTMENT_REMINDER",
                 ReferenceId = appt.AppointmentId,
                 ReferenceType = "APPOINTMENT",
+                SpaId = appt.SpaId ?? appt.Customer?.SpaId,
                 IsRead = false,
                 CreatedAt = DateTime.Now
             });
@@ -219,6 +275,7 @@ public class NotificationService : INotificationService
                 Type = "BIRTHDAY_REMINDER",
                 ReferenceId = cust.CustomerId,
                 ReferenceType = "CUSTOMER",
+                SpaId = cust.SpaId,
                 IsRead = false,
                 CreatedAt = DateTime.Now
             });
@@ -254,6 +311,7 @@ public class NotificationService : INotificationService
                 Type = "CANCEL_ALERT",
                 ReferenceId = cAppt.AppointmentId,
                 ReferenceType = "APPOINTMENT",
+                SpaId = cAppt.SpaId ?? cAppt.Customer?.SpaId,
                 IsRead = false,
                 CreatedAt = DateTime.Now
             });

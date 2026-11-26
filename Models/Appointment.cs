@@ -92,5 +92,11 @@ public class Appointment
     [Column("confirmation_token")]
     public Guid ConfirmationToken { get; set; } = Guid.NewGuid();
 
+    [Column("spa_id")]
+    public long? SpaId { get; set; }
+
+    [ForeignKey(nameof(SpaId))]
+    public virtual Spa? Spa { get; set; }
+
     public virtual ICollection<AppointmentService> AppointmentServices { get; set; } = new List<AppointmentService>();
 }

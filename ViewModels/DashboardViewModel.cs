@@ -2,17 +2,23 @@ namespace CRM_V2.ViewModels;
 
 public class DashboardViewModel
 {
-    public int TotalCustomers { get; set; } = 1248;
-    public double CustomerGrowthPercentage { get; set; } = 12.0;
+    public bool IsUnassignedStaff { get; set; }
+    public long? CurrentSpaId { get; set; }
+    public string? CurrentSpaName { get; set; }
+    public string? UnassignedBannerMessage { get; set; }
+    public List<CRM_V2.Services.MyInvitationDto> PendingInvitations { get; set; } = new();
 
-    public int TodayAppointments { get; set; } = 36;
-    public double AppointmentGrowthPercentage { get; set; } = 8.0;
+    public int TotalCustomers { get; set; } = 0;
+    public double CustomerGrowthPercentage { get; set; } = 0;
 
-    public decimal MonthlyRevenue { get; set; } = 128500000m;
-    public double RevenueGrowthPercentage { get; set; } = 15.0;
+    public int TodayAppointments { get; set; } = 0;
+    public double AppointmentGrowthPercentage { get; set; } = 0;
 
-    public int RetentionRate { get; set; } = 68;
-    public double RetentionGrowthPercentage { get; set; } = 6.0;
+    public decimal MonthlyRevenue { get; set; } = 0m;
+    public double RevenueGrowthPercentage { get; set; } = 0;
+
+    public int RetentionRate { get; set; } = 0;
+    public double RetentionGrowthPercentage { get; set; } = 0;
 
     public List<LoyalCustomerItem> LoyalCustomers { get; set; } = new();
     public List<AppointmentItem> UpcomingAppointments { get; set; } = new();

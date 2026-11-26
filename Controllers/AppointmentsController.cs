@@ -26,6 +26,25 @@ public class AppointmentsController : Controller
         _logger = logger;
     }
 
+    private bool IsCurrentUserStaffOnly()
+    {
+        if (User?.Identity?.IsAuthenticated != true)
+            return false;
+
+        return !User.IsInRole("Admin") &&
+               !User.IsInRole("Owner") &&
+               !User.IsInRole("admin") &&
+               !User.IsInRole("owner");
+    }
+
+    private ObjectResult ForbiddenStaffResult() =>
+        StatusCode(StatusCodes.Status403Forbidden, new
+        {
+            success = false,
+            code = "FORBIDDEN",
+            message = "403 Forbidden: Tài khoản Nhân viên (Staff) chỉ được phép xem lịch hẹn, không có quyền tạo, chỉnh sửa, kéo thả đổi trạng thái hoặc xóa lịch hẹn!"
+        });
+
     /// <summary>
     /// API lấy danh mục Khách hàng, Nhân viên, Dịch vụ cho Bộ lọc và Modal Đặt lịch
     /// </summary>
@@ -34,8 +53,31 @@ public class AppointmentsController : Controller
     {
         try
         {
-            var customers = await _context.Customers
-                .AsNoTracking()
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = true,
+                    isUnassignedStaff = true,
+                    customers = Array.Empty<object>(),
+                    employees = Array.Empty<object>(),
+                    services = Array.Empty<object>()
+                });
+            }
+
+            var custQuery = _context.Customers.AsNoTracking().AsQueryable();
+            var empQuery = _context.Users.AsNoTracking().Include(u => u.Role).Where(u => u.Status == "active");
+            var srvQuery = _context.Services.AsNoTracking().Where(s => s.IsActive);
+
+            if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                custQuery = custQuery.Where(c => c.SpaId == tenant.SpaId.Value);
+                empQuery = empQuery.Where(u => u.SpaId == tenant.SpaId.Value);
+                srvQuery = srvQuery.Where(s => s.SpaId == tenant.SpaId.Value);
+            }
+
+            var customers = await custQuery
                 .OrderByDescending(c => c.CustomerId)
                 .Select(c => new
                 {
@@ -46,10 +88,7 @@ public class AppointmentsController : Controller
                 })
                 .ToListAsync();
 
-            var employees = await _context.Users
-                .AsNoTracking()
-                .Include(u => u.Role)
-                .Where(u => u.Status == "active")
+            var employees = await empQuery
                 .OrderBy(u => u.FullName)
                 .Select(u => new
                 {
@@ -59,9 +98,7 @@ public class AppointmentsController : Controller
                 })
                 .ToListAsync();
 
-            var services = await _context.Services
-                .AsNoTracking()
-                .Where(s => s.IsActive)
+            var services = await srvQuery
                 .OrderBy(s => s.ServiceId)
                 .Select(s => new
                 {
@@ -148,6 +185,18 @@ public class AppointmentsController : Controller
     {
         try
         {
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = true,
+                    isUnassignedStaff = true,
+                    data = Array.Empty<object>(),
+                    summary = new { total = 0, pending = 0, confirmed = 0, inService = 0, completed = 0, noShow = 0, cancelled = 0 }
+                });
+            }
+
             // Tự động ẩn các lịch Hoàn thành / Vắng mặt / Đã hủy đã qua 23h Chủ Nhật của tuần
             await AutoHideExpiredBoardAppointmentsAsync();
 
@@ -159,6 +208,11 @@ public class AppointmentsController : Controller
                     .ThenInclude(aps => aps.Service)
                 .Where(a => !a.IsHiddenFromBoard)
                 .AsQueryable();
+
+            if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+            {
+                query = query.Where(a => a.SpaId == tenant.SpaId.Value);
+            }
 
             // 1. Lọc theo khoảng ngày
             var today = DateTime.Today;
@@ -285,13 +339,19 @@ public class AppointmentsController : Controller
     {
         try
         {
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new { success = false, message = "Bạn chưa tham gia đội ngũ Spa nào." });
+            }
+
             var a = await _context.Appointments
                 .AsNoTracking()
                 .Include(x => x.Customer)
                 .Include(x => x.Employee)
                 .Include(x => x.AppointmentServices)
                     .ThenInclude(aps => aps.Service)
-                .FirstOrDefaultAsync(x => x.AppointmentId == id);
+                .FirstOrDefaultAsync(x => x.AppointmentId == id && (tenant.IsAdminOrUnscoped || x.SpaId == tenant.SpaId));
 
             if (a == null)
             {
@@ -402,8 +462,12 @@ public class AppointmentsController : Controller
     /// Tự động tính end_time = start_time + SUM(service.duration_minutes) và kiểm tra chống trùng lịch KTV (Serializable Transaction)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Create([FromBody] AppointmentCreateViewModel model)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (!ModelState.IsValid || model.ServiceIds == null || model.ServiceIds.Count == 0)
         {
             return Json(new
@@ -416,10 +480,24 @@ public class AppointmentsController : Controller
 
         try
         {
-            long? currentUserId = null;
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (long.TryParse(userIdStr, out var parsedId))
-                currentUserId = parsedId;
+            var tenant = TenantContext.Resolve(User, _context, HttpContext);
+            if (tenant.IsUnassignedTenantUser)
+            {
+                return Json(new
+                {
+                    success = false,
+                    code = "UNASSIGNED_STAFF",
+                    message = "Bạn chưa tham gia đội ngũ Spa nào nên không thể tạo lịch hẹn."
+                });
+            }
+
+            long? currentUserId = tenant.UserId;
+            if (!currentUserId.HasValue)
+            {
+                var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (long.TryParse(userIdStr, out var parsedId))
+                    currentUserId = parsedId;
+            }
 
             var result = await _appointmentService.CreateAppointmentSafeAsync(model, currentUserId);
 
@@ -464,8 +542,12 @@ public class AppointmentsController : Controller
     /// API Cập nhật trạng thái / Chuyển cột Kanban (POST /Appointments/UpdateStatus)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> UpdateStatus([FromBody] AppointmentUpdateStatusViewModel model)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (!ModelState.IsValid)
         {
             return Json(new { success = false, message = "Dữ liệu yêu cầu không hợp lệ." });
@@ -496,8 +578,12 @@ public class AppointmentsController : Controller
     /// Có kiểm tra chống trùng lịch KTV (EMPLOYEE_BUSY / ALL_BUSY)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Reschedule([FromBody] AppointmentRescheduleViewModel model)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (!ModelState.IsValid)
         {
             return Json(new { success = false, code = "INVALID_INPUT", message = "Vui lòng kiểm tra lại ngày giờ hẹn." });
@@ -526,8 +612,12 @@ public class AppointmentsController : Controller
     /// API Hủy lịch hẹn bắt buộc kèm lý do hủy (POST /Appointments/Cancel)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> Cancel([FromBody] AppointmentCancelViewModel model)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (!ModelState.IsValid)
         {
             return Json(new { success = false, message = "Vui lòng nhập lý do hủy lịch hẹn." });
@@ -555,12 +645,25 @@ public class AppointmentsController : Controller
     [HttpGet]
     public async Task<IActionResult> ExportCsv(string? dateFilter = "all", string? status = "ALL")
     {
-        var list = await _context.Appointments
+        var tenant = TenantContext.Resolve(User, _context, HttpContext);
+        var query = _context.Appointments
             .AsNoTracking()
             .Include(a => a.Customer)
             .Include(a => a.Employee)
             .Include(a => a.AppointmentServices)
                 .ThenInclude(aps => aps.Service)
+            .AsQueryable();
+
+        if (tenant.IsUnassignedTenantUser)
+        {
+            query = query.Where(a => false);
+        }
+        else if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            query = query.Where(a => a.SpaId == tenant.SpaId.Value);
+        }
+
+        var list = await query
             .OrderByDescending(a => a.AppointmentDate)
             .ThenBy(a => a.StartTime)
             .ToListAsync();
@@ -590,8 +693,12 @@ public class AppointmentsController : Controller
     /// Xóa hiển thị lịch hẹn/dịch vụ khỏi bảng Kanban (nhưng KHÔNG xóa dữ liệu trong SQL Server)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> HideFromBoard([FromBody] HideAppointmentDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || dto.AppointmentId <= 0)
             return BadRequest(new { success = false, message = "Mã lịch hẹn không hợp lệ." });
 
@@ -623,8 +730,12 @@ public class AppointmentsController : Controller
     /// Xóa hiển thị 1 dịch vụ cụ thể trong chi tiết lịch hẹn (nhưng KHÔNG xóa bản ghi trong SQL Server)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> HideServiceDisplay([FromBody] HideServiceDisplayDto dto)
     {
+        if (IsCurrentUserStaffOnly())
+            return ForbiddenStaffResult();
+
         if (dto == null || dto.AppointmentId <= 0 || dto.ServiceId <= 0)
             return BadRequest(new { success = false, message = "Thông tin dịch vụ không hợp lệ." });
 

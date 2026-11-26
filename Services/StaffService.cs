@@ -1,5 +1,6 @@
 using CRM_V2.Data;
 using CRM_V2.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace CRM_V2.Services;
@@ -7,20 +8,42 @@ namespace CRM_V2.Services;
 public class StaffService : IStaffService
 {
     private readonly ApplicationDbContext _context;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
     private readonly ILogger<StaffService> _logger;
 
-    public StaffService(ApplicationDbContext context, ILogger<StaffService> logger)
+    public StaffService(
+        ApplicationDbContext context,
+        ILogger<StaffService> logger,
+        IHttpContextAccessor? httpContextAccessor = null)
     {
         _context = context;
         _logger = logger;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private TenantResolution ResolveCurrentTenant()
+    {
+        var httpContext = _httpContextAccessor?.HttpContext;
+        return TenantContext.Resolve(httpContext?.User, _context, httpContext);
     }
 
     public async Task<List<StaffDto>> GetStaffListAsync(string? search = null, int? roleId = null, string? status = null)
     {
+        var tenant = ResolveCurrentTenant();
+        if (tenant.IsUnassignedTenantUser)
+        {
+            return new List<StaffDto>();
+        }
+
         var query = _context.Users
             .AsNoTracking()
             .Include(u => u.Role)
             .Where(u => u.Status != "resigned");
+
+        if (!tenant.IsAdminOrUnscoped && tenant.SpaId.HasValue)
+        {
+            query = query.Where(u => u.SpaId == tenant.SpaId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -169,6 +192,7 @@ public class StaffService : IStaffService
                 ? $"https://ui-avatars.com/api/?name={Uri.EscapeDataString(dto.FullName)}&background=7C3AED&color=fff&size=150"
                 : dto.AvatarUrl.Trim();
 
+            var tenant = ResolveCurrentTenant();
             var newStaff = new User
             {
                 FullName = dto.FullName.Trim(),
@@ -177,6 +201,7 @@ public class StaffService : IStaffService
                 Phone = dto.Phone.Trim(),
                 PasswordHash = hash,
                 RoleId = dto.RoleId is >= 1 and <= 3 ? dto.RoleId : 3,
+                SpaId = tenant.SpaId,
                 Specialty = string.IsNullOrWhiteSpace(dto.Specialty) ? "Chăm sóc da & Trị liệu" : dto.Specialty.Trim(),
                 AvatarUrl = defaultAvatar,
                 Status = "active",
@@ -306,6 +331,243 @@ public class StaffService : IStaffService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Lỗi khi xóa nhân viên: {Message}", ex.Message);
+            return (false, "Lỗi máy chủ: " + ex.Message);
+        }
+    }
+
+    // =========================================================================
+    // MỜI NHÂN VIÊN VÀO ĐỘI NGŨ SPA
+    // =========================================================================
+    public async Task<List<StaffInviteSearchItemDto>> SearchStaffForInvitationAsync(string? query)
+    {
+        var tenant = ResolveCurrentTenant();
+        if (!tenant.SpaId.HasValue || string.IsNullOrWhiteSpace(query))
+            return new List<StaffInviteSearchItemDto>();
+
+        var spaId = tenant.SpaId.Value;
+        var kw = query.Trim().ToLower();
+
+        var users = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .Where(u => u.Role != null && u.Role.RoleName == "staff" && u.Status == "active" &&
+                        (u.FullName.ToLower().Contains(kw) ||
+                         u.Username.ToLower().Contains(kw) ||
+                         u.Email.ToLower().Contains(kw)))
+            .OrderBy(u => u.FullName)
+            .Take(10)
+            .ToListAsync();
+
+        var ids = users.Select(u => u.UserId).ToList();
+        var pendingIds = (await _context.SpaInvitations
+            .AsNoTracking()
+            .Where(i => i.SpaId == spaId && i.Status == "Pending" && ids.Contains(i.InviteeUserId))
+            .Select(i => i.InviteeUserId)
+            .ToListAsync()).ToHashSet();
+
+        return users.Select(u => new StaffInviteSearchItemDto
+        {
+            UserId = u.UserId,
+            FullName = u.FullName,
+            Username = u.Username,
+            Email = u.Email,
+            Phone = u.Phone,
+            AvatarUrl = string.IsNullOrWhiteSpace(u.AvatarUrl)
+                ? $"https://ui-avatars.com/api/?name={Uri.EscapeDataString(u.FullName)}&background=7C3AED&color=fff&size=150"
+                : u.AvatarUrl,
+            InviteStatus = u.SpaId == spaId ? "InTeam"
+                         : u.SpaId.HasValue ? "OtherSpa"
+                         : pendingIds.Contains(u.UserId) ? "Pending"
+                         : "NoSpa"
+        }).ToList();
+    }
+
+    public async Task<(bool Success, string Message)> SendInvitationAsync(long inviteeUserId)
+    {
+        try
+        {
+            var tenant = ResolveCurrentTenant();
+            if (!tenant.SpaId.HasValue || !tenant.UserId.HasValue)
+                return (false, "Tài khoản của bạn chưa gắn với quán Spa nào nên không thể gửi lời mời.");
+
+            var spa = await _context.Spas.FirstOrDefaultAsync(s => s.SpaId == tenant.SpaId.Value);
+            if (spa == null || spa.Status != "active")
+                return (false, "Quán Spa không tồn tại hoặc đang ngừng hoạt động.");
+
+            var inviter = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == tenant.UserId.Value);
+            var invitee = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == inviteeUserId);
+
+            if (invitee == null || invitee.Role?.RoleName != "staff" || invitee.Status != "active")
+                return (false, "Chỉ có thể mời tài khoản Nhân viên (staff) đang hoạt động.");
+
+            if (invitee.SpaId == spa.SpaId)
+                return (false, $"{invitee.FullName} đã thuộc đội ngũ của quán.");
+
+            if (invitee.SpaId.HasValue)
+                return (false, $"{invitee.FullName} đã thuộc một quán Spa khác.");
+
+            var pendingExists = await _context.SpaInvitations.AnyAsync(i =>
+                i.SpaId == spa.SpaId && i.InviteeUserId == inviteeUserId && i.Status == "Pending");
+            if (pendingExists)
+                return (false, $"Đã gửi lời mời cho {invitee.FullName} và đang chờ phản hồi.");
+
+            var invitation = new SpaInvitation
+            {
+                SpaId = spa.SpaId,
+                InviterUserId = tenant.UserId.Value,
+                InviteeUserId = inviteeUserId,
+                Status = "Pending",
+                CreatedAt = DateTime.Now
+            };
+            _context.SpaInvitations.Add(invitation);
+            await _context.SaveChangesAsync();
+
+            var ownerName = inviter?.FullName ?? "Chủ Spa";
+            _context.Notifications.Add(new Notification
+            {
+                UserId = inviteeUserId,
+                SpaId = spa.SpaId,
+                Title = "Lời mời gia nhập đội ngũ Spa",
+                Message = $"Chủ Spa {ownerName} mời bạn tham gia đội ngũ {spa.SpaName}. Vào Tổng quan để Đồng ý hoặc Từ chối.",
+                Type = "SPA_INVITATION",
+                ReferenceId = invitation.InvitationId,
+                ReferenceType = "SPA_INVITATION",
+                IsRead = false,
+                CreatedAt = DateTime.Now
+            });
+            await _context.SaveChangesAsync();
+
+            return (true, $"Đã gửi lời mời tới {invitee.FullName}. Đang chờ nhân viên phản hồi.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi gửi lời mời nhân viên");
+            return (false, "Lỗi máy chủ: " + ex.Message);
+        }
+    }
+
+    public async Task<(bool Success, string Message)> RemoveFromTeamAsync(long userId)
+    {
+        try
+        {
+            var tenant = ResolveCurrentTenant();
+            var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+                return (false, "Không tìm thấy nhân viên.");
+
+            if (!tenant.IsAdminOrUnscoped && user.SpaId != tenant.SpaId)
+                return (false, "Nhân viên này không thuộc đội ngũ của quán bạn.");
+
+            if (!user.SpaId.HasValue)
+                return (false, "Nhân viên này hiện không thuộc quán nào.");
+
+            if (user.UserId == tenant.UserId)
+                return (false, "Bạn không thể tự xóa chính mình khỏi đội ngũ.");
+
+            var isSpaOwner = await _context.Spas.AnyAsync(s => s.SpaId == user.SpaId && s.OwnerUserId == user.UserId);
+            if (isSpaOwner)
+                return (false, "Không thể xóa Chủ Spa khỏi quán của chính họ.");
+
+            user.SpaId = null;
+            user.UpdatedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+
+            return (true, $"Đã mời '{user.FullName}' ra khỏi đội ngũ. Tài khoản này sẽ không còn thấy dữ liệu của quán.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi xóa nhân viên khỏi đội ngũ");
+            return (false, "Lỗi máy chủ: " + ex.Message);
+        }
+    }
+
+    public async Task<List<MyInvitationDto>> GetMyPendingInvitationsAsync(long userId)
+    {
+        return await _context.SpaInvitations
+            .AsNoTracking()
+            .Where(i => i.InviteeUserId == userId && i.Status == "Pending")
+            .OrderByDescending(i => i.CreatedAt)
+            .Select(i => new MyInvitationDto
+            {
+                InvitationId = i.InvitationId,
+                SpaId = i.SpaId,
+                SpaName = i.Spa != null ? i.Spa.SpaName : "Spa",
+                OwnerName = i.InviterUser != null ? i.InviterUser.FullName : "Chủ Spa",
+                CreatedAt = i.CreatedAt
+            })
+            .ToListAsync();
+    }
+
+    public async Task<(bool Success, string Message, long? SpaId)> AcceptInvitationAsync(long invitationId, long userId)
+    {
+        try
+        {
+            var invitation = await _context.SpaInvitations
+                .Include(i => i.Spa)
+                .FirstOrDefaultAsync(i => i.InvitationId == invitationId && i.InviteeUserId == userId);
+
+            if (invitation == null)
+                return (false, "Không tìm thấy lời mời.", null);
+
+            if (invitation.Status != "Pending")
+                return (false, "Lời mời này đã được xử lý trước đó.", null);
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserId == userId);
+            if (user == null)
+                return (false, "Không tìm thấy tài khoản.", null);
+
+            if (user.SpaId.HasValue)
+                return (false, "Bạn đã thuộc một đội ngũ Spa khác.", null);
+
+            if (invitation.Spa == null || invitation.Spa.Status != "active")
+                return (false, "Quán Spa không còn hoạt động.", null);
+
+            invitation.Status = "Accepted";
+            invitation.RespondedAt = DateTime.Now;
+            user.SpaId = invitation.SpaId;
+            user.UpdatedAt = DateTime.Now;
+
+            // Các lời mời Pending còn lại của nhân viên này không còn hiệu lực
+            var others = await _context.SpaInvitations
+                .Where(i => i.InviteeUserId == userId && i.Status == "Pending" && i.InvitationId != invitationId)
+                .ToListAsync();
+            foreach (var o in others)
+            {
+                o.Status = "Rejected";
+                o.RespondedAt = DateTime.Now;
+            }
+
+            await _context.SaveChangesAsync();
+            return (true, $"Bạn đã gia nhập đội ngũ {invitation.Spa.SpaName}!", invitation.SpaId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi chấp nhận lời mời");
+            return (false, "Lỗi máy chủ: " + ex.Message, null);
+        }
+    }
+
+    public async Task<(bool Success, string Message)> RejectInvitationAsync(long invitationId, long userId)
+    {
+        try
+        {
+            var invitation = await _context.SpaInvitations
+                .FirstOrDefaultAsync(i => i.InvitationId == invitationId && i.InviteeUserId == userId);
+
+            if (invitation == null)
+                return (false, "Không tìm thấy lời mời.");
+
+            if (invitation.Status != "Pending")
+                return (false, "Lời mời này đã được xử lý trước đó.");
+
+            invitation.Status = "Rejected";
+            invitation.RespondedAt = DateTime.Now;
+            await _context.SaveChangesAsync();
+            return (true, "Đã từ chối lời mời.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Lỗi khi từ chối lời mời");
             return (false, "Lỗi máy chủ: " + ex.Message);
         }
     }
